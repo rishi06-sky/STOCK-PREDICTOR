@@ -247,6 +247,11 @@ class RiskEngine:
         notional = quantity * price
         if notional <= 0:
             decision.violations.append("computed position size is zero")
+        elif notional < settings.risk_min_order_notional:
+            decision.violations.append(
+                f"position size {notional:,.2f} is below the minimum order notional "
+                f"of {settings.risk_min_order_notional:,.2f}; refusing a dust trade"
+            )
 
         # Total exposure ceiling.
         if equity > 0 and (positions_value + notional) / equity > settings.risk_max_portfolio_exposure_pct:
@@ -283,8 +288,11 @@ class RiskEngine:
         # Cash.
         if notional > float(portfolio.cash):
             affordable = float(portfolio.cash) / price
-            if affordable < 1e-6:
-                decision.violations.append("insufficient cash")
+            if affordable * price < settings.risk_min_order_notional:
+                decision.violations.append(
+                    f"insufficient cash: {float(portfolio.cash):,.2f} buys less than the "
+                    f"{settings.risk_min_order_notional:,.2f} minimum order notional"
+                )
             else:
                 quantity = affordable
                 notional = quantity * price

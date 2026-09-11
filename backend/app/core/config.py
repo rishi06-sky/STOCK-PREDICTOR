@@ -93,6 +93,10 @@ class Settings(BaseSettings):
     risk_max_drawdown_pct: float = 0.20
     risk_min_reward_to_risk: float = 1.5
     risk_max_open_positions: int = 20
+    #: Orders below this notional are refused rather than filled. Real brokers
+    #: reject sub-minimum orders, and a dust position costs more in commission
+    #: than it can ever return.
+    risk_min_order_notional: float = 100.0
 
     # --------------------------------------------------------------- trading
     trading_mode: TradingMode = "paper"

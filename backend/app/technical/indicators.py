@@ -169,7 +169,12 @@ def vwap(
 
 
 def volume_ratio(volume: pd.Series, window: int = 20) -> pd.Series:
-    """Current volume against its recent average. >1 means unusually active."""
+    """Current volume against its recent average. >1 means unusually active.
+
+    The rolling average includes the current bar, matching how charting
+    platforms define it; a spike therefore reads slightly lower than it would
+    against a trailing-only baseline.
+    """
     avg = volume.rolling(window, min_periods=window).mean().replace(0.0, np.nan)
     return volume / avg
 

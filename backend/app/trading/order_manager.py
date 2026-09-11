@@ -159,6 +159,12 @@ class OrderManager:
                 opening_signal_id=signal_id,
             )
         )
+        # Flush so the new position is visible to the risk engine's queries on
+        # the next call. The session runs with autoflush disabled, and a paper
+        # cycle opens several positions inside one transaction: without this,
+        # the open-position count and sector exposure would undercount every
+        # position opened earlier in the same batch.
+        self.db.flush()
         self._audit("order.open", security.symbol, {
             "quantity": result.filled_quantity, "price": result.average_fill_price,
             "mode": str(self.broker.mode),
