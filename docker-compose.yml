@@ -1,0 +1,121 @@
+# Stock Intelligence Platform.
+#
+#   cp .env.example .env      # then set SECRET_KEY
+#   docker compose up -d
+#   docker compose exec api alembic upgrade head
+#   docker compose exec api python scripts/seed.py
+#
+# Only the frontend and API are published to the host; Postgres and Redis stay
+# on the internal network.
+
+name: stock-intelligence
+
+x-backend-env: &backend-env
+  ENVIRONMENT: ${ENVIRONMENT:-development}
+  DEBUG: ${DEBUG:-false}
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-stockintel}:${POSTGRES_PASSWORD:-stockintel}@postgres:5432/${POSTGRES_DB:-stockintel}
+  REDIS_URL: redis://redis:6379/0
+  SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set -- generate one with "openssl rand -hex 32"}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+  MARKET_DATA_PROVIDERS: ${MARKET_DATA_PROVIDERS:-yahoo,stooq}
+  ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY:-}
+  FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+  TRADING_MODE: ${TRADING_MODE:-paper}
+  LIVE_TRADING_ENABLED: ${LIVE_TRADING_ENABLED:-false}
+  KILL_SWITCH_ENGAGED: ${KILL_SWITCH_ENGAGED:-false}
+  PAPER_STARTING_CASH: ${PAPER_STARTING_CASH:-1000000}
+  SIGNAL_MIN_CONFIDENCE: ${SIGNAL_MIN_CONFIDENCE:-0.55}
+  ML_MODEL_DIR: /app/model_store
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USERNAME: ${SMTP_USERNAME:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_FROM: ${SMTP_FROM:-}
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+  TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-stockintel}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stockintel}
+      POSTGRES_DB: ${POSTGRES_DB:-stockintel}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stockintel}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [internal]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [internal]
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+      # The API process serves requests; the worker owns the schedule.
+      SCHEDULER_ENABLED: "false"
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - model_store:/app/model_store
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    networks: [internal]
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+      SCHEDULER_ENABLED: "true"
+    # Runs ingestion, pipeline cycles, snapshots and retraining on a schedule.
+    command: ["python", "-m", "app.workers.run"]
+    volumes:
+      - model_store:/app/model_store
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    networks: [internal]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+      args:
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000/api/v1}
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on: [api]
+    networks: [internal]
+
+volumes:
+  postgres_data:
+  redis_data:
+  model_store:
+
+networks:
+  internal:
+    driver: bridge
