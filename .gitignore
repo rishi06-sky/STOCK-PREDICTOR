@@ -1,0 +1,31 @@
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# secrets & env
+.env
+.env.*
+!.env.example
+
+# models & data
+model_store/
+*.joblib
+*.pkl
+data/
+
+# node
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# editors / os
+.DS_Store
+.idea/
+.vscode/
