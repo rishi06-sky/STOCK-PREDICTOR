@@ -402,6 +402,95 @@ def trading_status(db: Session = Depends(get_db), user: User = Depends(get_curre
     }
 
 
+# ------------------------------------------------------- kite tick stream
+@router.get("/system/stream")
+def stream_status(user: User = Depends(get_current_user)):
+    """Status of the pushed tick feed, if one is configured."""
+    from app.market_data.tick_service import get_tick_service
+
+    if not settings.kite_streaming_enabled:
+        return {
+            "enabled": False,
+            "note": (
+                "Streaming is off. Quotes are polled every "
+                f"{settings.ingest_intraday_interval_minutes} minutes and are "
+                "DELAYED, not real-time. Set KITE_STREAMING_ENABLED=true with "
+                "Kite credentials for an exchange-licensed live feed."
+            ),
+        }
+    return get_tick_service().status()
+
+
+@router.get("/system/kite/login-url")
+def kite_login_url(user: User = Depends(require_admin)):
+    """The Zerodha login URL for today's access token.
+
+    Kite access tokens expire each morning around 07:30 IST. Visiting this URL
+    and completing the login returns a `request_token` on the redirect, which
+    is then exchanged via POST /system/kite/session.
+    """
+    from app.market_data.providers.kite import login_url
+
+    if not settings.kite_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="KITE_API_KEY is not configured"
+        )
+    return {
+        "login_url": login_url(settings.kite_api_key),
+        "instructions": (
+            "Open the URL, sign in to Zerodha, and copy the request_token from "
+            "the redirect query string. Then POST it to /system/kite/session."
+        ),
+        "token_expires": "daily, around 07:30 IST",
+    }
+
+
+@router.post("/system/kite/session", response_model=dict)
+def kite_exchange_token(
+    request_token: str = Query(..., min_length=6, max_length=128),
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Exchange a request_token for today's access token.
+
+    The resulting token is returned once and NOT persisted by the server. Put
+    it in KITE_ACCESS_TOKEN and restart the worker; storing a broker
+    credential in the application database is a decision for the operator, not
+    a default this code makes.
+    """
+    from app.market_data.providers.kite import KiteAuthError, KiteConnectProvider
+
+    if not (settings.kite_api_key and settings.kite_api_secret):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="KITE_API_KEY and KITE_API_SECRET must both be configured",
+        )
+
+    provider = KiteConnectProvider(api_key=settings.kite_api_key, access_token=None)
+    try:
+        session_data = provider.exchange_request_token(
+            request_token, settings.kite_api_secret
+        )
+    except KiteAuthError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+
+    record_audit(
+        db, actor=user.email, action="system.kite.session",
+        details={"user_id": session_data.get("user_id")}, user_id=user.id,
+    )
+    db.commit()
+
+    return {
+        "access_token": session_data.get("access_token"),
+        "kite_user_id": session_data.get("user_id"),
+        "login_time": session_data.get("login_time"),
+        "next_step": (
+            "Set KITE_ACCESS_TOKEN to this value and restart the worker. "
+            "The token is not stored server-side."
+        ),
+    }
+
+
 @router.post("/system/pipeline/run", response_model=dict, status_code=status.HTTP_202_ACCEPTED)
 def trigger_pipeline(
     background: BackgroundTasks,

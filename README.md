@@ -136,15 +136,23 @@ requires a licensed vendor or a broker feed. Yahoo Finance's `.NS` / `.BO`
 symbols are the only zero-cost path that also covers US markets, so it is the
 default primary provider.
 
-| Provider | Key | Coverage | Freshness | Free limit |
+| Provider | Key | Coverage | Freshness | Cost |
 |---|---|---|---|---|
-| **Yahoo Finance** | none | NSE, BSE, NYSE, NASDAQ | ~15-min delayed intraday; reliable EOD | unofficial endpoint, self-throttled |
+| **Zerodha Kite Connect** | yes | NSE, BSE | **LIVE** — exchange-licensed WebSocket ticks | ~Rs 2,000/mo ([setup](docs/kite-streaming.md)) |
+| **Yahoo Finance** | none | NSE, BSE, NYSE, NASDAQ | ~15-min delayed intraday; reliable EOD | free, unofficial endpoint |
 | **Stooq** | none | US + international | **EOD only** | courtesy use |
 | Alpha Vantage | yes | global + fundamentals | 15-min delayed | ~25 requests/**day** |
 | Finnhub | yes | US only + news | ~20-min delayed | ~60/min |
 
 Providers sit behind an adapter interface with an ordered failover chain, so
 swapping in a paid feed is a configuration change, not a rewrite.
+
+**Real-time vs. real data.** On the free path the platform runs on *real*
+market data that is *not* real-time: Yahoo is ~15 minutes behind and the
+poller adds up to another 15, so a price on screen can be half an hour old.
+Nothing ever emits `LIVE` on that path. Adding Zerodha Kite Connect replaces
+polling with a pushed, exchange-licensed tick stream — sub-second, tagged
+`LIVE`, NSE and BSE only. See [docs/kite-streaming.md](docs/kite-streaming.md).
 
 **Limitations, stated plainly:**
 

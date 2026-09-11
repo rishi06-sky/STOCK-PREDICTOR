@@ -63,6 +63,26 @@ class Settings(BaseSettings):
         "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
     )
     # Per-provider client-side throttle (requests/minute).
+    # --- Zerodha Kite Connect (paid, exchange-licensed real-time NSE/BSE) ---
+    # The access token is issued by the daily Zerodha login flow and expires
+    # each morning (~07:30 IST). The API secret is needed only to exchange a
+    # request_token for an access_token.
+    kite_api_key: str | None = None
+    kite_api_secret: str | None = None
+    kite_access_token: str | None = None
+    kite_rate_limit_per_minute: int = 55        # Kite allows ~1 quote call/sec
+    #: Enable the pushed tick stream. Requires a Kite subscription.
+    kite_streaming_enabled: bool = False
+    #: ltp | quote | full. "quote" carries OHLC and volume without the 184-byte
+    #: market-depth payload, which is the useful default.
+    kite_stream_mode: str = "quote"
+    #: Kite caps a single websocket connection at 3000 instruments.
+    kite_stream_max_instruments: int = 3000
+    #: Persist streamed ticks to the quotes table at most this often, per
+    #: security. Ticks arrive several times a second; writing every one would
+    #: swamp the database for no analytical gain.
+    kite_tick_persist_interval_seconds: float = 5.0
+
     yahoo_rate_limit_per_minute: int = 60
     stooq_rate_limit_per_minute: int = 30
     alpha_vantage_rate_limit_per_minute: int = 5

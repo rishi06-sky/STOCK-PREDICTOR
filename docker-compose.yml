@@ -20,6 +20,10 @@ x-backend-env: &backend-env
   MARKET_DATA_PROVIDERS: ${MARKET_DATA_PROVIDERS:-yahoo,stooq}
   ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY:-}
   FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+  KITE_API_KEY: ${KITE_API_KEY:-}
+  KITE_API_SECRET: ${KITE_API_SECRET:-}
+  KITE_ACCESS_TOKEN: ${KITE_ACCESS_TOKEN:-}
+  KITE_STREAM_MODE: ${KITE_STREAM_MODE:-quote}
   TRADING_MODE: ${TRADING_MODE:-paper}
   LIVE_TRADING_ENABLED: ${LIVE_TRADING_ENABLED:-false}
   KILL_SWITCH_ENGAGED: ${KILL_SWITCH_ENGAGED:-false}
@@ -71,8 +75,11 @@ services:
     restart: unless-stopped
     environment:
       <<: *backend-env
-      # The API process serves requests; the worker owns the schedule.
+      # The API process serves requests; the worker owns the schedule and the
+      # tick stream. A second Kite connection on the same access token would
+      # be refused by the vendor.
       SCHEDULER_ENABLED: "false"
+      KITE_STREAMING_ENABLED: "false"
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
@@ -90,6 +97,7 @@ services:
     environment:
       <<: *backend-env
       SCHEDULER_ENABLED: "true"
+      KITE_STREAMING_ENABLED: ${KITE_STREAMING_ENABLED:-false}
     # Runs ingestion, pipeline cycles, snapshots and retraining on a schedule.
     command: ["python", "-m", "app.workers.run"]
     volumes:

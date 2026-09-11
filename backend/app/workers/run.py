@@ -47,10 +47,27 @@ def main() -> int:
         log.error("worker_scheduler_disabled", hint="set SCHEDULER_ENABLED=true")
         return 1
 
+    # The tick stream lives in the worker only: a second process would open a
+    # second Kite connection against the same access token.
+    tick_service = None
+    if settings.kite_streaming_enabled:
+        from app.market_data.tick_service import get_tick_service
+
+        tick_service = get_tick_service()
+        if tick_service.start():
+            log.info("worker_tick_stream_started", status=tick_service.status())
+        else:
+            log.warning(
+                "worker_tick_stream_unavailable",
+                hint="check KITE_API_KEY / KITE_ACCESS_TOKEN and the subscription",
+            )
+
     log.info("worker_started", jobs=scheduler_status()["jobs"])
     try:
         _stop.wait()
     finally:
+        if tick_service is not None:
+            tick_service.stop()
         stop_scheduler()
         log.info("worker_stopped")
     return 0

@@ -15,6 +15,7 @@ from app.core.logging import get_logger
 from app.market_data.base import MarketDataProvider, NotSupported
 from app.market_data.providers.alpha_vantage import AlphaVantageProvider
 from app.market_data.providers.finnhub import FinnhubProvider
+from app.market_data.providers.kite import KiteConnectProvider
 from app.market_data.providers.stooq import StooqProvider
 from app.market_data.providers.yahoo import YahooFinanceProvider
 from app.market_data.types import (
@@ -24,6 +25,10 @@ from app.market_data.types import (
 log = get_logger(__name__)
 
 PROVIDER_CLASSES: dict[str, type[MarketDataProvider]] = {
+    # Kite is exchange-licensed real-time for NSE/BSE and belongs first in the
+    # chain when configured; it covers no US listings, so the chain falls
+    # through to Yahoo for those.
+    "kite": KiteConnectProvider,
     "yahoo": YahooFinanceProvider,
     "stooq": StooqProvider,
     "alpha_vantage": AlphaVantageProvider,

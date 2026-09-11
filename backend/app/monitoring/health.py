@@ -231,6 +231,38 @@ def check_notifications(db: Session) -> ComponentHealth:
     return ComponentHealth("notifications", HealthStatus.HEALTHY, "delivering", metrics)
 
 
+def check_tick_stream() -> ComponentHealth:
+    """Report the pushed tick feed, when one is configured."""
+    if not settings.kite_streaming_enabled:
+        return ComponentHealth(
+            "tick_stream", HealthStatus.HEALTHY,
+            "not enabled; quotes come from polling", {"enabled": False},
+        )
+
+    from app.market_data.tick_service import get_tick_service
+
+    service = get_tick_service()
+    status = service.status()
+
+    if not status["configured"]:
+        return ComponentHealth(
+            "tick_stream", HealthStatus.DEGRADED,
+            "enabled but missing KITE_API_KEY / KITE_ACCESS_TOKEN", status,
+        )
+    if not status["started"]:
+        return ComponentHealth(
+            "tick_stream", HealthStatus.DEGRADED, "enabled but not started", status
+        )
+
+    ok, detail = service.stream.health_check()
+    return ComponentHealth(
+        "tick_stream",
+        HealthStatus.HEALTHY if ok else HealthStatus.DEGRADED,
+        detail,
+        status,
+    )
+
+
 def check_trading() -> ComponentHealth:
     from app.trading.brokers.live_guard import live_trading_status
 
@@ -249,7 +281,8 @@ def check_trading() -> ComponentHealth:
 def system_health(db: Session, *, include_providers: bool = True) -> dict:
     components = [
         check_database(db), check_redis(), check_data_freshness(db),
-        check_models(db), check_signals(db), check_notifications(db), check_trading(),
+        check_models(db), check_signals(db), check_notifications(db),
+        check_trading(), check_tick_stream(),
     ]
     if include_providers:
         components.append(check_providers())
