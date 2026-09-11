@@ -8,10 +8,13 @@ if misconfigured.
 """
 from __future__ import annotations
 
+import hashlib
 import json
-import math
+import os
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
+
+import numpy as np
 
 from app.core.config import settings
 from app.core.exceptions import ProviderError, SymbolNotFound
@@ -29,6 +32,13 @@ class FixtureProvider(MarketDataProvider):
     default_quality = DataQuality.SYNTHETIC
     requires_key = False
 
+    #: When true, generated series carry a learnable momentum effect. Used only
+    #: by end-to-end tests that need a model with a real edge; set via the
+    #: FIXTURE_INJECT_MOMENTUM environment variable.
+    inject_momentum: bool = os.getenv("FIXTURE_INJECT_MOMENTUM", "").lower() in (
+        "1", "true", "yes"
+    )
+
     def __init__(self, fixture_dir: str | Path | None = None, **kwargs):
         if not (settings.environment == "test" or settings.enable_fixture_provider):
             raise FixtureProviderRefused(
@@ -41,17 +51,38 @@ class FixtureProvider(MarketDataProvider):
         self.fixture_dir = Path(fixture_dir) if fixture_dir else None
         self.rate_limit_per_minute = 100_000
 
-    # Deterministic pseudo-random walk. Seeded per symbol so a given symbol
-    # always replays the identical series, which keeps tests reproducible.
+    # Seeded geometric random walk. Reproducibility comes from the SEED, not
+    # from a learnable functional form: an earlier version built prices from
+    # sin() and models scored a meaningless 1.0 AUC on it, because the series
+    # was perfectly predictable. Test data must be statistically realistic --
+    # a clean pipeline has to score ~0.5 on it, or the tests prove nothing.
     @staticmethod
     def _walk(symbol: str, days: int, *, base: float = 100.0) -> list[float]:
-        seed = sum(ord(c) * (i + 1) for i, c in enumerate(symbol)) or 7
-        prices, level = [], base + (seed % 400)
-        for i in range(days):
-            x = math.sin((seed + i * 13) * 0.37) + math.sin((seed + i * 7) * 0.11) * 0.6
-            level = max(1.0, level * (1 + x * 0.012))
-            prices.append(round(level, 2))
-        return prices
+        # hashlib, not builtin hash(): string hashing is randomised per process,
+        # which would make "reproducible" fixtures differ between runs.
+        digest = hashlib.sha256(f"stockintel-fixture:{symbol}".encode()).digest()
+        seed = int.from_bytes(digest[:4], "big")
+        rng = np.random.default_rng(seed)
+        start = base + (seed % 400)
+
+        if FixtureProvider.inject_momentum:
+            # Opt-in mode for END-TO-END tests only. Injects a known momentum
+            # effect so the prediction -> signal -> trade path can be exercised
+            # with a model that actually has an edge. Never a claim about real
+            # markets: the data stays tagged SYNTHETIC throughout.
+            levels = np.empty(days)
+            levels[0] = start
+            shocks = rng.normal(0.0002, 0.011, days)
+            for t in range(1, days):
+                lookback = max(0, t - 11)
+                momentum = (levels[t - 1] / levels[lookback] - 1) if t > 11 else 0.0
+                levels[t] = levels[t - 1] * (1 + 0.45 * momentum / 10 + shocks[t])
+            return [round(float(max(level, 1.0)), 2) for level in levels]
+
+        # Default: a pure geometric random walk at ~20% annualised vol.
+        shocks = rng.normal(0.0002, 0.013, days)
+        levels = start * np.exp(np.cumsum(shocks))
+        return [round(float(max(level, 1.0)), 2) for level in levels]
 
     def fetch_daily_bars(self, symbol: str, start: date, end: date) -> list[Bar]:
         if self.fixture_dir:
@@ -78,7 +109,11 @@ class FixtureProvider(MarketDataProvider):
                     symbol=symbol, trade_date=day,
                     open=o, high=h, low=max(0.01, l), close=close,
                     adj_close=close,
-                    volume=500_000 + (hash((symbol, day)) % 400_000),
+                    volume=500_000 + (
+                        int.from_bytes(
+                            hashlib.sha256(f"{symbol}:{day}".encode()).digest()[:3], "big"
+                        ) % 400_000
+                    ),
                     provider=self.name, quality=DataQuality.SYNTHETIC,
                     source_timestamp=datetime.combine(day, time(23, 59), tzinfo=timezone.utc),
                 )
