@@ -84,6 +84,12 @@ class FixtureProvider(MarketDataProvider):
         levels = start * np.exp(np.cumsum(shocks))
         return [round(float(max(level, 1.0)), 2) for level in levels]
 
+    #: All series are generated from this fixed date forward, then sliced to
+    #: the requested window. Without an absolute anchor the same calendar date
+    #: would price differently depending on the range asked for, and a quote
+    #: fetched over 10 days would not match the close of a 5-year history.
+    EPOCH = date(2015, 1, 1)
+
     def fetch_daily_bars(self, symbol: str, start: date, end: date) -> list[Bar]:
         if self.fixture_dir:
             recorded = self._from_disk(symbol, start, end)
@@ -92,14 +98,20 @@ class FixtureProvider(MarketDataProvider):
         if start > end:
             raise ValueError("start must not be after end")
 
-        days = [
-            start + timedelta(days=i)
-            for i in range((end - start).days + 1)
-            if (start + timedelta(days=i)).weekday() < 5
+        anchor = min(self.EPOCH, start)
+        all_days = [
+            day
+            for i in range((end - anchor).days + 1)
+            if (day := anchor + timedelta(days=i)).weekday() < 5
         ]
-        closes = self._walk(symbol, len(days))
+        if not all_days:
+            return []
+        closes = self._walk(symbol, len(all_days))
+
         bars: list[Bar] = []
-        for day, close in zip(days, closes):
+        for day, close in zip(all_days, closes):
+            if not start <= day <= end:
+                continue
             spread = max(0.01, close * 0.011)
             o = round(close - spread * 0.4, 2)
             h = round(max(o, close) + spread * 0.5, 2)
