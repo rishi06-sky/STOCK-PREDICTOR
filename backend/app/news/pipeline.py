@@ -23,8 +23,10 @@ from app.sentiment.analyzer import aggregate_sentiment, analyze
 
 log = get_logger(__name__)
 
-#: Beyond this an article is history, not news, whenever it was retrieved.
-BREAKING_WINDOW = timedelta(hours=6)
+#: Beyond this an article is history, not news, however recently it was
+#: retrieved. Kept deliberately short: a four-hour-old story flagged as
+#: "breaking" is the kind of small dishonesty that erodes trust in the feed.
+BREAKING_WINDOW = timedelta(hours=2)
 
 
 @dataclass(slots=True)

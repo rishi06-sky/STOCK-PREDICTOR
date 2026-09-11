@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+
+html, body {
+  @apply bg-ground text-ink antialiased;
+}
+
+/* Terminal-style scrollbars: present but unobtrusive. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { @apply bg-ground; }
+::-webkit-scrollbar-thumb { @apply bg-line-bright rounded; }
+::-webkit-scrollbar-thumb:hover { @apply bg-ink-faint; }
+
+@layer components {
+  .panel {
+    @apply bg-ground-raised border border-line rounded-lg;
+  }
+  .panel-header {
+    @apply flex items-center justify-between px-4 py-3 border-b border-line;
+  }
+  .panel-title {
+    @apply text-xs font-semibold uppercase tracking-wider text-ink-muted;
+  }
+  .stat-label {
+    @apply text-2xs uppercase tracking-wider text-ink-faint;
+  }
+  .stat-value {
+    @apply font-mono tabular-nums;
+  }
+  .data-table {
+    @apply w-full text-sm border-collapse;
+  }
+  .data-table th {
+    @apply text-2xs uppercase tracking-wider text-ink-faint font-medium
+           text-left px-3 py-2 border-b border-line whitespace-nowrap;
+  }
+  .data-table td {
+    @apply px-3 py-2 border-b border-line/60 whitespace-nowrap;
+  }
+  .data-table tbody tr:hover {
+    @apply bg-ground-overlay;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-3 py-1.5
+           text-sm font-medium transition-colors disabled:opacity-50
+           disabled:cursor-not-allowed;
+  }
+  .btn-primary { @apply btn bg-accent text-white hover:bg-accent/85; }
+  .btn-ghost {
+    @apply btn border border-line text-ink-muted hover:text-ink hover:border-line-bright;
+  }
+  .input {
+    @apply w-full bg-ground border border-line rounded-md px-3 py-2 text-sm
+           text-ink placeholder:text-ink-faint focus:outline-none
+           focus:border-accent focus:ring-1 focus:ring-accent;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs
+           font-medium tracking-wide;
+  }
+}

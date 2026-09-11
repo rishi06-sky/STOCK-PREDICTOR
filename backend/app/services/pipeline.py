@@ -127,7 +127,9 @@ class Pipeline:
 
         quote_ok = 0
         if quotes:
-            for security in securities:
+            # Indices are quoted as well as barred: the dashboard shows them,
+            # and a benchmark with history but no quote renders as "no data".
+            for security in securities + benchmarks:
                 try:
                     if service.ingest_quote(security, commit=False).ok:
                         quote_ok += 1

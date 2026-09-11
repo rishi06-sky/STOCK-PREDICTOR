@@ -94,6 +94,9 @@ class SecurityOut(ORMModel):
 class QuoteOut(BaseModel):
     security_id: int
     symbol: str
+    #: Present so dual-listed names (HDFCBANK trades on both NSE and BSE)
+    #: are distinguishable in any list that mixes exchanges.
+    exchange: str | None = None
     price: float
     previous_close: float | None
     change: float | None

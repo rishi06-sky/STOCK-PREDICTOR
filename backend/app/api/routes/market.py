@@ -104,7 +104,9 @@ def get_quote(
 
     age = (datetime.now(timezone.utc) - quote.source_timestamp).total_seconds()
     return QuoteOut(
-        security_id=security.id, symbol=security.symbol, price=float(quote.price),
+        security_id=security.id, symbol=security.symbol,
+        exchange=security.exchange.code if security.exchange else None,
+        price=float(quote.price),
         previous_close=float(quote.previous_close) if quote.previous_close else None,
         change=float(quote.change) if quote.change else None,
         change_pct=quote.change_pct,
@@ -188,7 +190,9 @@ def market_movers(
     now = datetime.now(timezone.utc)
     return [
         QuoteOut(
-            security_id=s.id, symbol=s.symbol, price=float(q.price),
+            security_id=s.id, symbol=s.symbol,
+            exchange=s.exchange.code if s.exchange else None,
+            price=float(q.price),
             previous_close=float(q.previous_close) if q.previous_close else None,
             change=float(q.change) if q.change else None, change_pct=q.change_pct,
             day_open=float(q.day_open) if q.day_open else None,
@@ -216,7 +220,9 @@ def indices(db: Session = Depends(get_db), _: None = Depends(rate_limit)):
     now = datetime.now(timezone.utc)
     return [
         QuoteOut(
-            security_id=s.id, symbol=s.symbol, price=float(q.price),
+            security_id=s.id, symbol=s.symbol,
+            exchange=s.exchange.code if s.exchange else None,
+            price=float(q.price),
             previous_close=float(q.previous_close) if q.previous_close else None,
             change=float(q.change) if q.change else None, change_pct=q.change_pct,
             day_open=None, day_high=None, day_low=None, volume=q.volume,
