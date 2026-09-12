@@ -1,0 +1,182 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A new push supersedes an in-flight run on the same ref: the older result is
+# about to be stale anyway, and the test suite is not cheap.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "22"
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        # Credentials must match the DATABASE_URL that tests/conftest.py
+        # defaults to; the database name has to contain "test", which conftest
+        # asserts before it will run anything destructive.
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: stockintel
+          POSTGRES_PASSWORD: stockintel
+          POSTGRES_DB: stockintel_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U stockintel"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      ENVIRONMENT: test
+      SCHEDULER_ENABLED: "false"
+      NOTIFICATIONS_ENABLED: "false"
+      MARKET_DATA_PROVIDERS: fixture
+      DATABASE_URL: postgresql+psycopg://stockintel:stockintel@localhost:5432/stockintel_test
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: ci-secret-key-not-used-outside-continuous-integration
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests
+        working-directory: backend
+        # The suite trains real models and drives a websocket server, so it is
+        # slower than a typical unit run. Everything is included deliberately:
+        # the leakage canaries are the tests most worth having in CI.
+        run: pytest --cov=app --cov-report=term:skip-covered --cov-report=xml
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+  migrations:
+    name: Migration integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: stockintel
+          POSTGRES_PASSWORD: stockintel
+          POSTGRES_DB: stockintel_migrations
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U stockintel"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: postgresql+psycopg://stockintel:stockintel@localhost:5432/stockintel_migrations
+      SECRET_KEY: ci-secret-key-not-used-outside-continuous-integration
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Apply migrations to an empty database
+        working-directory: backend
+        run: alembic upgrade head
+
+      - name: Fail if the models have drifted from the migrations
+        working-directory: backend
+        # A model changed without a matching migration is silent until someone
+        # deploys. Autogenerate against the freshly migrated database: if it
+        # emits any operation, the two have diverged.
+        run: |
+          alembic revision --autogenerate -m drift-check >/dev/null
+          generated=$(ls -t alembic/versions/*drift_check.py | head -1)
+          if grep -qE '^\s+op\.' "$generated"; then
+            echo "::error::Models have drifted from the migrations. Missing operations:"
+            sed -n '/def upgrade/,/def downgrade/p' "$generated"
+            exit 1
+          fi
+          echo "No drift: migrations match the models."
+          rm -f "$generated"
+
+      - name: Verify migrations roll back
+        working-directory: backend
+        run: alembic downgrade base
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: Lint
+        working-directory: frontend
+        run: npx next lint
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build

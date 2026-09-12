@@ -206,12 +206,17 @@ class TestFullPipeline:
             )
             assert trade.mode.value == "PAPER"
 
-        # Cash must reconcile against the ledger, to the cent.
+        # Cash must reconcile against the ledger. The tolerance is one cent
+        # PER TRADE, not one cent overall: portfolio.cash is NUMERIC(24,2), so
+        # every write rounds to the cent, while this recomputation runs at full
+        # float precision. A systematic error (a wrong commission or slippage
+        # rate) would scale with the notional and blow past this bound; only
+        # accumulated rounding stays inside it.
         spent = sum(
             float(t.price) * float(t.quantity) + float(t.commission) for t in trades
         )
         assert float(portfolio.cash) == pytest.approx(
-            float(portfolio.starting_cash) - spent, abs=0.01
+            float(portfolio.starting_cash) - spent, abs=0.01 * max(len(trades), 1)
         )
 
         # Every holding must trace back to an order and a trade.
