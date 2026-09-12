@@ -11,7 +11,7 @@ from datetime import date, timedelta
 
 import httpx
 from tenacity import (
-    retry, retry_if_exception_type, stop_after_attempt, wait_exponential_jitter,
+    retry, retry_if_exception, stop_after_attempt, wait_exponential_jitter,
 )
 
 from app.core.config import settings
@@ -25,6 +25,11 @@ from app.market_data.types import (
 )
 
 log = get_logger(__name__)
+
+
+def _should_retry(exc: BaseException) -> bool:
+    """Retry only provider errors that declare themselves retryable."""
+    return isinstance(exc, ProviderError) and exc.retryable
 
 
 class NotSupported(ProviderError):
@@ -79,7 +84,11 @@ class MarketDataProvider(abc.ABC):
         self.close()
 
     @retry(
-        retry=retry_if_exception_type((ProviderRateLimited, ProviderUnavailable)),
+        # Honour the exception's own `retryable` flag rather than matching on
+        # type alone. A policy denial or a dead API key raises
+        # ProviderUnavailable with retryable=False, and retrying it just burns
+        # the backoff window per symbol for a request that can never succeed.
+        retry=retry_if_exception(_should_retry),
         stop=stop_after_attempt(settings.provider_max_retries),
         wait=wait_exponential_jitter(initial=1, max=20),
         reraise=True,
