@@ -107,6 +107,13 @@ with AUC at or below 0.53, is capped below the actionable floor. No
 probability, however extreme, can push a thin-edge model into producing a
 signal.
 
+**"Validated AUC" is the lowest of the model's out-of-sample measurements** —
+the walk-forward mean and the held-out block. The two often disagree, and when
+they do the lower one is the estimate that has not been optimised against.
+Quoting the higher would advertise an edge the other test does not support, so
+a model whose CV says 0.60 and whose holdout says 0.52 is treated as a 0.52
+model and produces no actionable signals. In-sample scores are never used.
+
 Below `SIGNAL_MIN_CONFIDENCE` the engine emits `NO_ACTION`. **No signal is
 better than a forced one.**
 
@@ -122,7 +129,18 @@ becomes a `CANDIDATE` and reaches `PRODUCTION` only if it clears:
 - no more than 0.02 AUC worse than the incumbent it would replace
 
 Failures are recorded as a system event with reasons. The incumbent keeps
-serving. Rollback restores the most recently archived version.
+serving.
+
+The incumbent comparison applies only while the incumbent can actually serve.
+A production model whose artefact fails its checksum is producing nothing, so
+holding replacements to its recorded score would deadlock the system —
+predictions disabled, every retrain rejected for "regressing" against a model
+that is not running. In that case the candidate is judged on the absolute bars
+alone, which still apply in full.
+
+Rollback restores the most recently archived version **whose artefact
+verifies**, skipping any that do not; if none verify it restores nothing rather
+than swapping one unusable model for another.
 
 ## Drift
 

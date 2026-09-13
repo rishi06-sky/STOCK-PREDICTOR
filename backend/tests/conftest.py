@@ -1,14 +1,26 @@
 """Shared test fixtures.
 
-Every test runs with ENVIRONMENT=test against a dedicated database, so a test
-run can never touch development data. The environment is set before any
-application module is imported, because settings are read at import time.
+Every test runs with ENVIRONMENT=test against a dedicated database and a
+throwaway model store, so a test run can never touch development data. The
+environment is set before any application module is imported, because settings
+are read at import time.
 """
 from __future__ import annotations
 
 import os
+import shutil
+import tempfile
 
 os.environ.setdefault("ENVIRONMENT", "test")
+# Model artefacts live on the filesystem, not in the database, so pointing the
+# tests at a dedicated database is not enough on its own: a test that trains a
+# model allocates its version from the (empty) test database, lands on "v1",
+# and overwrites the real ./model_store/<name>/v1.joblib that the development
+# registry still points at. Give every test run its own store.
+_TEMP_MODEL_STORE = None
+if not os.environ.get("ML_MODEL_DIR"):
+    _TEMP_MODEL_STORE = tempfile.mkdtemp(prefix="stockintel-test-model-store-")
+    os.environ["ML_MODEL_DIR"] = _TEMP_MODEL_STORE
 os.environ.setdefault("SCHEDULER_ENABLED", "false")
 os.environ.setdefault("MARKET_DATA_PROVIDERS", "fixture")
 os.environ.setdefault("NOTIFICATIONS_ENABLED", "false")
@@ -19,6 +31,7 @@ os.environ.setdefault(
 os.environ.setdefault("SECRET_KEY", "test-secret-key-at-least-32-characters-long")
 
 from datetime import date, datetime, timedelta, timezone  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
@@ -54,7 +67,15 @@ def _guard_environment():
     assert "test" in settings.database_url, (
         f"refusing to run against {settings.database_url!r}: the URL must name a test database"
     )
+    assert Path(settings.ml_model_dir).resolve() != Path("./model_store").resolve(), (
+        "refusing to run against the development model store: a training test "
+        "would overwrite deployed artefacts"
+    )
     yield
+    # Training tests leave real artefacts behind; only clean up the directory
+    # this module created, never one an operator pointed the run at.
+    if _TEMP_MODEL_STORE and settings.ml_model_dir == _TEMP_MODEL_STORE:
+        shutil.rmtree(_TEMP_MODEL_STORE, ignore_errors=True)
 
 
 @pytest.fixture(scope="session")

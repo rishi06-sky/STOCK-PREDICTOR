@@ -7,8 +7,10 @@ stops a bad retrain from quietly taking over signal generation.
 """
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 
 import numpy as np
 from sqlalchemy import select
@@ -22,6 +24,10 @@ from app.models.enums import EventSeverity, ModelStatus, PredictionTarget
 from app.models.platform import ModelMetric, ModelVersion, SystemEvent
 
 log = get_logger(__name__)
+
+# path -> ((size, mtime_ns), sha256). Artefacts run to tens of megabytes and
+# their integrity is checked on every health poll, so hash each one once.
+_DIGEST_CACHE: dict[str, tuple[tuple[int, int], str]] = {}
 
 
 @dataclass(slots=True)
@@ -73,6 +79,54 @@ class PromotionGate:
                 )
 
         return (not failures), failures
+
+
+def artifact_digest(file: Path) -> str:
+    """sha256 of the artefact, cached on (path, size, mtime).
+
+    Production artefacts run to tens of megabytes and health is polled, so
+    re-hashing on every request would be wasteful. Any write changes size or
+    mtime, which invalidates the entry -- the point of the check is to notice
+    exactly that.
+    """
+    stat = file.stat()
+    key = str(file)
+    stamp = (stat.st_size, stat.st_mtime_ns)
+    cached = _DIGEST_CACHE.get(key)
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+
+    hasher = hashlib.sha256()
+    with file.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    digest = hasher.hexdigest()
+    # Keyed by path with the stamp as the value, so a rewritten artefact
+    # replaces its own entry instead of accumulating one per revision, and
+    # several production models each keep a cached digest.
+    _DIGEST_CACHE[key] = (stamp, digest)
+    return digest
+
+
+def artifact_problem(model: ModelVersion) -> str | None:
+    """Why this model's artefact cannot be loaded, or None if it is fine."""
+    if not model.artifact_path:
+        return "no artefact path recorded"
+    file = Path(model.artifact_path)
+    if not file.exists():
+        return f"artefact missing: {model.artifact_path}"
+    if not model.artifact_sha256:
+        return "no checksum recorded; the artefact cannot be verified"
+    try:
+        actual = artifact_digest(file)
+    except OSError as exc:
+        return f"artefact unreadable: {exc}"
+    if actual != model.artifact_sha256:
+        return (
+            f"checksum mismatch (expected {model.artifact_sha256[:12]}, "
+            f"got {actual[:12]})"
+        )
+    return None
 
 
 def next_version(db: Session, name: str) -> str:
@@ -172,15 +226,29 @@ def promote_model(
     )
 
     incumbent_auc = None
+    incumbent_broken = None
     if incumbent is not None:
-        incumbent_auc = db.scalar(
-            select(ModelMetric.metric_value).where(
-                ModelMetric.model_version_id == incumbent.id,
-                ModelMetric.split == "cv_mean",
-                ModelMetric.metric_name == "roc_auc",
+        incumbent_broken = artifact_problem(incumbent)
+        if incumbent_broken:
+            # The incumbent's recorded score is only a bar worth defending
+            # while the incumbent can actually serve. One that fails its own
+            # integrity check is producing nothing, so holding a replacement
+            # to it deadlocks the system: predictions stay disabled and every
+            # retrain is rejected for "regressing" against a model that is not
+            # running. Judge the candidate on the absolute bars alone.
+            log.warning(
+                "incumbent_artefact_unusable",
+                name=incumbent.name, version=incumbent.version, problem=incumbent_broken,
             )
-        )
-        incumbent_auc = float(incumbent_auc) if incumbent_auc is not None else None
+        else:
+            incumbent_auc = db.scalar(
+                select(ModelMetric.metric_value).where(
+                    ModelMetric.model_version_id == incumbent.id,
+                    ModelMetric.split == "cv_mean",
+                    ModelMetric.metric_name == "roc_auc",
+                )
+            )
+            incumbent_auc = float(incumbent_auc) if incumbent_auc is not None else None
 
     passed, failures = (True, []) if result is None else gate.evaluate(result, incumbent_auc)
 
@@ -211,6 +279,7 @@ def promote_model(
             details={
                 "forced": force, "actor": actor, "failures": failures,
                 "replaced": incumbent.version if incumbent else None,
+                "replaced_because_unusable": incumbent_broken,
             },
             created_at=now,
         )
@@ -223,7 +292,7 @@ def promote_model(
 def rollback_model(db: Session, name: str, horizon_days: int, *, actor: str = "system") -> ModelVersion | None:
     """Restore the most recently archived version as production."""
     current = get_production_model(db, name=name, horizon_days=horizon_days)
-    previous = db.scalars(
+    archived = db.scalars(
         select(ModelVersion)
         .where(
             ModelVersion.name == name,
@@ -231,12 +300,25 @@ def rollback_model(db: Session, name: str, horizon_days: int, *, actor: str = "s
             ModelVersion.status == ModelStatus.ARCHIVED,
         )
         .order_by(ModelVersion.archived_at.desc())
-        .limit(1)
-    ).first()
+    ).all()
+
+    # Rollback is the recovery path, so it must not land on an artefact that
+    # is missing or no longer matches its checksum -- that would swap one
+    # unusable production model for another and report success. Walk back to
+    # the newest archived version that actually verifies.
+    previous, skipped = None, []
+    for candidate in archived:
+        problem = artifact_problem(candidate)
+        if problem is None:
+            previous = candidate
+            break
+        skipped.append(f"{candidate.version}: {problem}")
 
     if previous is None:
-        log.warning("model_rollback_unavailable", name=name)
+        log.warning("model_rollback_unavailable", name=name, unusable=skipped)
         return None
+    if skipped:
+        log.warning("model_rollback_skipped_unusable", name=name, skipped=skipped)
 
     now = datetime.now(timezone.utc)
     if current is not None:
@@ -249,7 +331,10 @@ def rollback_model(db: Session, name: str, horizon_days: int, *, actor: str = "s
         SystemEvent(
             component="ml", event_type="model_rolled_back", severity=EventSeverity.WARNING,
             message=f"rolled back to {name}:{previous.version}",
-            details={"from": current.version if current else None, "actor": actor},
+            details={
+                "from": current.version if current else None, "actor": actor,
+                "skipped_unusable": skipped,
+            },
             created_at=now,
         )
     )

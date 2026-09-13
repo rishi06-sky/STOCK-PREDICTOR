@@ -60,6 +60,35 @@ signal sitting below the confidence floor. Each is a risk control working.
 It was not promoted — the gate compares candidates against the incumbent.
 To revert manually: `POST /api/v1/models/{id}/rollback` (admin).
 
+**`models` is UNHEALTHY: "production model(s) unusable".**
+The registry row and the artefact on disk have diverged — the file is missing,
+or its bytes no longer match the checksum recorded when it was trained.
+Predictions are disabled until this is resolved, which is the intended
+fail-safe: an artefact that cannot be verified is never loaded. The health
+detail names the version and the specific problem.
+
+Causes, in order of likelihood: the model store was restored from a backup
+without the database (or vice versa), the directory is not the one the running
+process is configured to use (`ML_MODEL_DIR`), or a second process wrote to the
+same store. Note that `save_model` refuses to overwrite an existing artefact,
+so a live model cannot be clobbered by a normal retrain.
+
+To recover, either:
+
+* **Retrain.** `python scripts/bootstrap.py --skip-ingest` registers a new
+  version and promotes it if it clears the gate. The gate does not hold a
+  replacement to the score of an unusable incumbent — that model is serving
+  nothing — but every absolute bar still applies, so a model with no edge is
+  still refused.
+* **Roll back.** `POST /api/v1/models/{id}/rollback` (admin) restores the most
+  recent archived version *whose artefact verifies*, skipping any that do not.
+  If none verify it returns nothing rather than restoring a broken model, and
+  retraining is the only route.
+
+Restoring the missing artefact from backup also works, if you have it: the
+checksum in `model_versions.artifact_sha256` tells you whether the file you
+found is the right one.
+
 ## Emergency shutdown
 
 1. **Kill switch** (immediate, reversible): System page → *Engage kill
