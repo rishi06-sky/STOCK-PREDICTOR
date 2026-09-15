@@ -38,7 +38,7 @@ export default function LoginPage() {
           <div className="mx-auto mb-3 h-2.5 w-2.5 rounded-sm bg-accent" />
           <h1 className="text-xl font-semibold tracking-tight">Stock Intelligence</h1>
           <p className="mt-1 text-2xs text-ink-faint">
-            NSE · BSE · NYSE · NASDAQ — research and paper trading
+            NSE · BSE — research and paper trading
           </p>
         </div>
 

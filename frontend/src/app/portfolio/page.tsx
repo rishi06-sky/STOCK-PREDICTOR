@@ -237,7 +237,7 @@ export default function PortfolioPage() {
                         <td className="text-ink-muted">{position.sector ?? '--'}</td>
                         <td className="text-right font-mono tabular-nums">{formatNumber(position.quantity, 2)}</td>
                         <td className="text-right font-mono tabular-nums">{formatNumber(position.average_cost)}</td>
-                        <td className="text-right font-mono tabular-nums">{formatNumber(position.current_price)}</td>
+                        <td className="text-right font-mono tabular-nums">{formatCurrency(position.current_price, pf?.currency)}</td>
                         <td className="text-right font-mono tabular-nums">{formatNumber(position.market_value, 0)}</td>
                         <td className={`text-right font-mono tabular-nums ${directionClass(position.unrealized_pnl)}`}>
                           {formatNumber(position.unrealized_pnl, 2)}
@@ -292,9 +292,9 @@ export default function PortfolioPage() {
                           </span>
                         </td>
                         <td className="text-right font-mono tabular-nums">{formatNumber(trade.quantity, 2)}</td>
-                        <td className="text-right font-mono tabular-nums">{formatNumber(trade.price)}</td>
+                        <td className="text-right font-mono tabular-nums">{formatCurrency(trade.price, pf?.currency)}</td>
                         <td className="text-right font-mono tabular-nums text-ink-muted">
-                          {formatNumber(trade.reference_price)}
+                          {formatCurrency(trade.reference_price, pf?.currency)}
                         </td>
                         <td className="text-right font-mono tabular-nums text-ink-muted">
                           {formatNumber(trade.commission)}

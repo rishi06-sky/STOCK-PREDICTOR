@@ -36,7 +36,7 @@ def trading_setup(seeded_db):
     seeded_db.flush()
 
     securities = list(
-        seeded_db.scalars(select(Security).where(Security.symbol.in_(["RELIANCE", "TCS", "AAPL"])))
+        seeded_db.scalars(select(Security).where(Security.symbol.in_(["RELIANCE", "TCS", "INFY"])))
     )
     service = IngestionService(seeded_db)
     for security in securities:
@@ -45,7 +45,7 @@ def trading_setup(seeded_db):
     seeded_db.flush()
 
     portfolio = Portfolio(
-        user_id=user.id, name="Test Paper", mode="PAPER", currency="USD",
+        user_id=user.id, name="Test Paper", mode="PAPER", currency=settings.base_currency,
         starting_cash=1_000_000, cash=1_000_000, peak_equity=1_000_000,
     )
     seeded_db.add(portfolio)
@@ -321,7 +321,7 @@ class TestApi:
         response = client.get("/api/v1/market/status")
         assert response.status_code == 200
         codes = {row["exchange"] for row in response.json()}
-        assert {"NSE", "BSE", "NYSE", "NASDAQ"} <= codes
+        assert {"NSE", "BSE"} <= codes
 
     def test_an_unknown_symbol_is_a_404(self, client):
         assert client.get("/api/v1/market/quote/NOSUCHTICKER").status_code == 404

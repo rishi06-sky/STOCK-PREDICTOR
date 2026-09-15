@@ -131,6 +131,8 @@ export interface Quote {
   security_id: number;
   symbol: string;
   exchange: string | null;
+  /** Listing currency, supplied per quote so prices are never assumed. */
+  currency: string | null;
   price: number;
   previous_close: number | null;
   change: number | null;

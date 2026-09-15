@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import useSWR from 'swr';
 import { fetcher, type Page, type Signal } from '@/lib/api';
-import { directionClass, formatNumber, formatPercent, relativeTime } from '@/lib/format';
+import { directionClass, formatCurrency, formatNumber, formatPercent, relativeTime } from '@/lib/format';
 import {
   Confidence, Disclaimer, Empty, ErrorBox, Loading, Panel, QualityBadge,
   RiskBadge, SignalBadge,
@@ -98,8 +98,6 @@ export default function OpportunitiesPage() {
               <option value="">All</option>
               <option value="NSE">NSE</option>
               <option value="BSE">BSE</option>
-              <option value="NYSE">NYSE</option>
-              <option value="NASDAQ">NASDAQ</option>
             </select>
           </div>
           <div>
@@ -170,7 +168,7 @@ export default function OpportunitiesPage() {
                       {signal.opportunity_score?.toFixed(1) ?? '--'}
                     </td>
                     <td className="text-right font-mono tabular-nums">
-                      {formatNumber(signal.reference_price)}
+                      {formatCurrency(signal.reference_price)}
                     </td>
                     <td className="text-right font-mono tabular-nums text-ink-muted">
                       {signal.entry_low && signal.entry_high

@@ -11,7 +11,7 @@ end-of-day, and is tagged as such.
 | Freshness tag | `DELAYED` | **`LIVE`** |
 | Transport | HTTP poll every 15 min | WebSocket push |
 | End-to-end lag | up to ~30 min | sub-second |
-| Coverage | NSE, BSE, NYSE, NASDAQ | **NSE, BSE only** |
+| Coverage | NSE, BSE | NSE, BSE |
 | Cost | free | ~₹2,000/month |
 
 Kite covers no US listings. The provider chain falls through to Yahoo for

@@ -240,7 +240,9 @@ class YahooFinanceProvider(MarketDataProvider):
                 SecurityInfo(
                     symbol=q["symbol"],
                     name=q.get("longname") or q.get("shortname") or q["symbol"],
-                    currency=q.get("currency") or "USD",
+                    # Yahoo normally reports the listing currency; fall back
+                    # to the platform's own rather than assuming USD.
+                    currency=q.get("currency") or settings.base_currency,
                     exchange_code=q.get("exchange"),
                     sector=q.get("sector"),
                     industry=q.get("industry"),

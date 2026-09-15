@@ -8,9 +8,7 @@ import {
   Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { fetcher, type DataQuality, type Rationale, type SignalKind } from '@/lib/api';
-import {
-  directionClass, formatCompact, formatDateTime, formatNumber, formatPercent, relativeTime,
-} from '@/lib/format';
+import { directionClass, formatCompact, formatCurrency, formatDateTime, formatNumber, formatPercent, relativeTime } from '@/lib/format';
 import {
   Confidence, Disclaimer, Empty, ErrorBox, Loading, Panel, QualityBadge,
   RiskBadge, SignalBadge, Stat,
@@ -137,7 +135,7 @@ export default function StockPage() {
 
           {quote && (
             <div className="text-right">
-              <div className="font-mono text-3xl tabular-nums">{formatNumber(quote.price)}</div>
+              <div className="font-mono text-3xl tabular-nums">{formatCurrency(quote.price, security.currency)}</div>
               <div className={`font-mono text-sm tabular-nums ${directionClass(quote.change_pct)}`}>
                 {formatNumber(quote.change)} ({formatPercent(quote.change_pct, 2, { alreadyPercent: true })})
               </div>

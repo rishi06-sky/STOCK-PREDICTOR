@@ -97,6 +97,9 @@ class QuoteOut(BaseModel):
     #: Present so dual-listed names (HDFCBANK trades on both NSE and BSE)
     #: are distinguishable in any list that mixes exchanges.
     exchange: str | None = None
+    #: Listing currency, so the client formats the price correctly instead of
+    #: assuming one. Carried per quote rather than inferred globally.
+    currency: str | None = None
     price: float
     previous_close: float | None
     change: float | None

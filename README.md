@@ -1,7 +1,14 @@
 # Stock Intelligence Platform
 
-AI-assisted market monitoring, signal generation and paper trading across
-**NSE**, **BSE**, **NYSE** and **NASDAQ**.
+AI-assisted market monitoring, signal generation and paper trading on
+India's **NSE** and **BSE**, settling in **INR**.
+
+The seeded universe is deliberately single-currency. Carrying US listings
+alongside Indian ones meant one portfolio held both INR and USD positions, and
+valuing it summed them without converting — rupees added to dollars. The free
+data path has no FX source to convert with honestly, so the scope is one
+market. The adapter layer and exchange tables are unchanged, so adding a
+venue back is a seeding change, not a rewrite.
 
 The system ingests market data, engineers features, trains and validates
 models under walk-forward cross-validation, generates risk-checked signals
@@ -166,7 +173,7 @@ default primary provider.
 | Provider | Key | Coverage | Freshness | Cost |
 |---|---|---|---|---|
 | **Zerodha Kite Connect** | yes | NSE, BSE | **LIVE** — exchange-licensed WebSocket ticks | ~Rs 2,000/mo ([setup](docs/kite-streaming.md)) |
-| **Yahoo Finance** | none | NSE, BSE, NYSE, NASDAQ | ~15-min delayed intraday; reliable EOD | free, unofficial endpoint |
+| **Yahoo Finance** | none | NSE, BSE (`.NS` / `.BO`) | ~15-min delayed intraday; reliable EOD | free, unofficial endpoint |
 | **Stooq** | none | US + international | **EOD only** | courtesy use |
 | Alpha Vantage | yes | global + fundamentals | 15-min delayed | ~25 requests/**day** |
 | Finnhub | yes | US only + news | ~20-min delayed | ~60/min |

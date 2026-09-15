@@ -115,7 +115,7 @@ export default function DashboardPage() {
                       <td><SignalBadge signal={signal.signal} /></td>
                       <td><Confidence value={signal.confidence} /></td>
                       <td className="text-right font-mono tabular-nums">
-                        {formatNumber(signal.reference_price)}
+                        {formatCurrency(signal.reference_price)}
                       </td>
                       <td className={`text-right font-mono tabular-nums ${directionClass(signal.expected_return)}`}>
                         {formatPercent(signal.expected_return)}
@@ -225,7 +225,9 @@ export default function DashboardPage() {
                         </Link>
                         <div className="text-2xs text-ink-faint">{quote.exchange}</div>
                       </td>
-                      <td className="text-right font-mono tabular-nums">{formatNumber(quote.price)}</td>
+                      <td className="text-right font-mono tabular-nums">
+                        {formatCurrency(quote.price, quote.currency)}
+                      </td>
                       <td className={`text-right font-mono tabular-nums ${directionClass(quote.change_pct)}`}>
                         {formatPercent(quote.change_pct, 2, { alreadyPercent: true })}
                       </td>

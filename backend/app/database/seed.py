@@ -14,11 +14,17 @@ from app.models.market import Exchange, Market, Security
 
 log = get_logger(__name__)
 
+# India only. The platform previously seeded NYSE and NASDAQ alongside NSE and
+# BSE, which put INR and USD securities in one portfolio -- and the portfolio
+# summed their values without converting, so equity was rupees added to
+# dollars. Rather than carry an FX rate the free data path cannot source
+# honestly, the universe is single-currency by construction.
+#: Every seeded venue settles in this currency; see the note on MARKETS.
+MARKET_CURRENCY = "INR"
+
 MARKETS = [
     {"code": "IN", "name": "India", "country": "India", "currency": "INR",
      "timezone": "Asia/Kolkata"},
-    {"code": "US", "name": "United States", "country": "United States", "currency": "USD",
-     "timezone": "America/New_York"},
 ]
 
 EXCHANGES = [
@@ -26,10 +32,6 @@ EXCHANGES = [
      "open_time": "09:15", "close_time": "15:30", "yahoo_suffix": ".NS"},
     {"market": "IN", "code": "BSE", "name": "BSE Limited",
      "open_time": "09:15", "close_time": "15:30", "yahoo_suffix": ".BO"},
-    {"market": "US", "code": "NYSE", "name": "New York Stock Exchange",
-     "open_time": "09:30", "close_time": "16:00", "yahoo_suffix": ""},
-    {"market": "US", "code": "NASDAQ", "name": "Nasdaq Stock Market",
-     "open_time": "09:30", "close_time": "16:00", "yahoo_suffix": ""},
 ]
 
 # (symbol, name, sector, industry)
@@ -62,39 +64,14 @@ BSE_UNIVERSE = [
     ("HDFCBANK", "HDFC Bank Ltd", "Financial Services", "Private Bank"),
 ]
 
-NYSE_UNIVERSE = [
-    ("JPM", "JPMorgan Chase & Co.", "Financial Services", "Diversified Banks"),
-    ("JNJ", "Johnson & Johnson", "Healthcare", "Pharmaceuticals"),
-    ("V", "Visa Inc.", "Financial Services", "Payment Processing"),
-    ("WMT", "Walmart Inc.", "Consumer Staples", "Hypermarkets"),
-    ("XOM", "Exxon Mobil Corporation", "Energy", "Integrated Oil & Gas"),
-    ("PG", "Procter & Gamble Co.", "Consumer Staples", "Household Products"),
-    ("UNH", "UnitedHealth Group Inc.", "Healthcare", "Managed Care"),
-    ("HD", "Home Depot Inc.", "Consumer Discretionary", "Home Improvement Retail"),
-]
-
-NASDAQ_UNIVERSE = [
-    ("AAPL", "Apple Inc.", "Information Technology", "Consumer Electronics"),
-    ("MSFT", "Microsoft Corporation", "Information Technology", "Software"),
-    ("GOOGL", "Alphabet Inc. Class A", "Communication Services", "Interactive Media"),
-    ("AMZN", "Amazon.com Inc.", "Consumer Discretionary", "Internet Retail"),
-    ("NVDA", "NVIDIA Corporation", "Information Technology", "Semiconductors"),
-    ("META", "Meta Platforms Inc.", "Communication Services", "Interactive Media"),
-    ("TSLA", "Tesla Inc.", "Consumer Discretionary", "Automobile Manufacturers"),
-    ("AVGO", "Broadcom Inc.", "Information Technology", "Semiconductors"),
-    ("COST", "Costco Wholesale Corporation", "Consumer Staples", "Hypermarkets"),
-    ("NFLX", "Netflix Inc.", "Communication Services", "Entertainment"),
-]
-
 # Benchmarks used for regime detection and backtest comparison.
 INDICES = [
     ("NSE", "^NSEI", "NIFTY 50", "INR"),
-    ("NASDAQ", "^GSPC", "S&P 500", "USD"),
+    ("BSE", "^BSESN", "S&P BSE SENSEX", "INR"),
 ]
 
 UNIVERSES = {
     "NSE": NSE_UNIVERSE, "BSE": BSE_UNIVERSE,
-    "NYSE": NYSE_UNIVERSE, "NASDAQ": NASDAQ_UNIVERSE,
 }
 
 
@@ -128,7 +105,7 @@ def seed_reference_data(db: Session) -> dict[str, int]:
 
     for exchange_code, rows in UNIVERSES.items():
         exchange = exchange_ids[exchange_code]
-        currency = "INR" if exchange_code in ("NSE", "BSE") else "USD"
+        currency = MARKET_CURRENCY
         for symbol, name, sector, industry in rows:
             exists = db.scalar(
                 select(Security).where(

@@ -176,8 +176,8 @@ export default function BacktestsPage() {
                       <tr key={index}>
                         <td className="text-2xs">{trade.entry_date}</td>
                         <td className="text-2xs">{trade.exit_date}</td>
-                        <td className="text-right font-mono tabular-nums">{formatNumber(trade.entry_price)}</td>
-                        <td className="text-right font-mono tabular-nums">{formatNumber(trade.exit_price)}</td>
+                        <td className="text-right font-mono tabular-nums">{formatCurrency(trade.entry_price)}</td>
+                        <td className="text-right font-mono tabular-nums">{formatCurrency(trade.exit_price)}</td>
                         <td className={`text-right font-mono tabular-nums ${directionClass(trade.net_pnl)}`}>
                           {formatNumber(trade.net_pnl)}
                         </td>

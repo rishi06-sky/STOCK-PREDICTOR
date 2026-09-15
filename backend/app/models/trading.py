@@ -10,6 +10,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.config import settings
 from app.database.base import Base, TimestampMixin
 from app.models.enums import (
     ExitReason, OrderSide, OrderStatus, OrderType, PositionStatus, TradingMode,
@@ -35,7 +36,9 @@ class Portfolio(Base, TimestampMixin):
         SAEnum(TradingMode, native_enum=False, length=8),
         default=TradingMode.PAPER, nullable=False,
     )
-    currency: Mapped[str] = mapped_column(String(8), default="USD", nullable=False)
+    currency: Mapped[str] = mapped_column(
+        String(8), default=settings.base_currency, nullable=False
+    )
     starting_cash: Mapped[float] = mapped_column(Numeric(24, 2), nullable=False)
     cash: Mapped[float] = mapped_column(Numeric(24, 2), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
