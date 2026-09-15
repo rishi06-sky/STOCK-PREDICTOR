@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.ml.registry import artifact_problem
 from app.models.analysis import Signal
 from app.models.enums import AlertStatus, HealthStatus, ModelStatus, SignalStatus
 from app.models.market import PriceData, Quote, Security
@@ -152,11 +153,14 @@ def check_models(db: Session) -> ComponentHealth:
         )
 
     now = datetime.now(timezone.utc)
-    entries, stale = [], 0
+    entries, stale, broken = [], 0, []
     for model in production:
         age_days = (now - model.trained_at).days if model.trained_at else None
         if age_days is not None and age_days > 45:
             stale += 1
+        artefact = artifact_problem(model)
+        if artefact:
+            broken.append(f"{model.name}:{model.version} -- {artefact}")
         entries.append(
             {
                 "name": model.name, "version": model.version,
@@ -164,7 +168,20 @@ def check_models(db: Session) -> ComponentHealth:
                 "trained_at": model.trained_at.isoformat() if model.trained_at else None,
                 "age_days": age_days,
                 "feature_set_version": model.feature_set_version,
+                "artefact": artefact or "verified",
             }
+        )
+
+    if broken:
+        # A production row whose artefact will not load means predictions are
+        # already failing, one logged error per security, while this check
+        # would otherwise report HEALTHY. The registry row is not the model:
+        # the artefact is, and it has to be verified.
+        return ComponentHealth(
+            "models", HealthStatus.UNHEALTHY,
+            f"{len(broken)} production model(s) unusable; predictions disabled: "
+            + "; ".join(broken),
+            {"models": entries, "unusable_models": len(broken)},
         )
 
     status = HealthStatus.DEGRADED if stale else HealthStatus.HEALTHY

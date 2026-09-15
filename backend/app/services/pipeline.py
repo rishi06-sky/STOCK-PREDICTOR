@@ -31,7 +31,7 @@ from app.ml.registry import get_production_model
 from app.models.analysis import RegimeState, Signal
 from app.models.enums import AssetType, EventSeverity, MarketRegime, SignalStatus
 from app.models.market import Exchange, Security
-from app.models.platform import ModelMetric, SystemEvent
+from app.models.platform import ModelMetric, ModelVersion, SystemEvent
 from app.models.trading import Portfolio
 from app.news.pipeline import NewsPipeline
 from app.signals.engine import SignalEngine
@@ -249,6 +249,24 @@ class Pipeline:
         return row.regime, row.volatility_regime
 
     # ----------------------------------------------------- predict + signal
+    def measured_edge(self, model_version: ModelVersion) -> float | None:
+        """The model's ROC-AUC, taken as the most conservative measurement.
+
+        Signal confidence is scaled by this number, so the flattering estimate
+        is the wrong one to use. Walk-forward CV and the held-out block
+        routinely disagree; when they do, the lower score is the one that has
+        not been optimised against, and quoting the higher one would present
+        an edge the out-of-sample test does not support.
+        """
+        measured = self.db.scalars(
+            select(ModelMetric.metric_value).where(
+                ModelMetric.model_version_id == model_version.id,
+                ModelMetric.split.in_(("cv_mean", "holdout")),
+                ModelMetric.metric_name == "roc_auc",
+            )
+        ).all()
+        return min((float(m) for m in measured if m is not None), default=None)
+
     def generate_signals(self, *, horizon_days: int = 5) -> StageResult:
         model_version = get_production_model(self.db, horizon_days=horizon_days)
         if model_version is None:
@@ -263,14 +281,7 @@ class Pipeline:
                 detail={"signals_generated": 0},
             )
 
-        model_auc = self.db.scalar(
-            select(ModelMetric.metric_value).where(
-                ModelMetric.model_version_id == model_version.id,
-                ModelMetric.split == "cv_mean",
-                ModelMetric.metric_name == "roc_auc",
-            )
-        )
-        model_auc = float(model_auc) if model_auc is not None else None
+        model_auc = self.measured_edge(model_version)
 
         securities = self._universe()
         predictor = PredictionService(self.db)

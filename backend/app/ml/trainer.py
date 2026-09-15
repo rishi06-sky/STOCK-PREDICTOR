@@ -336,6 +336,22 @@ def save_model(result: TrainingResult, name: str, version: str) -> tuple[str, st
     directory = model_store_dir() / name
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{version}.joblib"
+    if path.exists():
+        # Versions are allocated from the registry table, so an artefact that
+        # is already on disk means the filesystem and the registry disagree --
+        # a restored database, a deleted row, or a run pointed at the wrong
+        # store. Overwriting would destroy the artefact a live ModelVersion
+        # row still references, and the checksum recorded against that row
+        # would stop matching, disabling predictions until someone works out
+        # why. Refuse instead: a loud failure is recoverable, silent
+        # corruption is not.
+        raise FileExistsError(
+            f"refusing to overwrite existing model artefact {path}: "
+            f"version {version} of {name} is already on disk. The registry "
+            "and the model store are out of sync -- check that ML_MODEL_DIR "
+            "matches the database, and delete the file only once you have "
+            "confirmed no model_versions row points at it."
+        )
     joblib.dump(
         {
             "pipeline": result.pipeline,

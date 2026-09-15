@@ -91,26 +91,40 @@ def take_profit_from_rr(
     return price + risk * reward_to_risk if side is OrderSide.BUY else price - risk * reward_to_risk
 
 
+def expected_fill_price(price: float, side: OrderSide = OrderSide.BUY) -> float:
+    """Reference price adjusted for the slippage the broker will apply.
+
+    Slippage always works against the order, so a buy fills above the
+    reference and a sell below it.
+    """
+    slip = settings.slippage_bps / 10_000.0
+    return price * (1 + slip) if side is OrderSide.BUY else price * (1 - slip)
+
+
 def position_size(
     equity: float, price: float, stop: float, *,
     risk_per_trade_pct: float, max_position_pct: float, size_multiplier: float = 1.0,
+    fill_price: float | None = None,
 ) -> tuple[float, list[str]]:
     """Size so that a stop-out costs a fixed fraction of equity.
 
-    Returns (quantity, notes). The position-value cap is applied afterwards so
-    a very tight stop cannot imply an enormous position.
+    Returns (quantity, notes). Risk per share is measured from the reference
+    price to the stop; the position-VALUE cap is measured at `fill_price`,
+    because that is the capital actually deployed. Applying the value cap
+    afterwards stops a very tight stop implying an enormous position.
     """
     notes: list[str] = []
     risk_per_share = abs(price - stop)
     if risk_per_share <= 0 or price <= 0 or equity <= 0:
         return 0.0, ["invalid price, stop or equity"]
 
+    fill_price = fill_price if fill_price and fill_price > 0 else price
     capital_at_risk = equity * risk_per_trade_pct * max(0.0, size_multiplier)
     quantity = capital_at_risk / risk_per_share
 
     max_notional = equity * max_position_pct
-    if quantity * price > max_notional:
-        quantity = max_notional / price
+    if quantity * fill_price > max_notional:
+        quantity = max_notional / fill_price
         notes.append(
             f"position capped at {max_position_pct:.0%} of equity "
             f"(volatility-based size would have been larger)"
@@ -167,6 +181,10 @@ class RiskEngine:
             return decision
 
         decision.risk_level = classify_risk(volatility, atr_pct=(atr / price) if atr else None)
+
+        # What this order is expected to cost per share once the broker applies
+        # adverse slippage. All capital-deployed limits are measured against it.
+        fill_price = expected_fill_price(price, side)
 
         # ---------------------------------------------------- levels first
         stop = volatility_stop(price, atr, side=side, atr_multiplier=atr_multiplier)
@@ -241,10 +259,15 @@ class RiskEngine:
             risk_per_trade_pct=settings.risk_per_trade_pct,
             max_position_pct=settings.risk_max_position_pct,
             size_multiplier=effective_multiplier,
+            fill_price=fill_price,
         )
         decision.reasons.extend(notes)
 
-        notional = quantity * price
+        # Cap arithmetic uses the expected FILL price, not the reference. The
+        # broker fills a buy above the reference by the slippage, so sizing
+        # against the reference overshoots every limit below by exactly that
+        # margin -- enough to push a position fractionally past its cap.
+        notional = quantity * fill_price
         if notional <= 0:
             decision.violations.append("computed position size is zero")
         elif notional < settings.risk_min_order_notional:
@@ -258,14 +281,14 @@ class RiskEngine:
             headroom = max(
                 0.0, equity * settings.risk_max_portfolio_exposure_pct - positions_value
             )
-            if headroom < price:
+            if headroom < fill_price:
                 decision.violations.append(
                     f"portfolio exposure limit {settings.risk_max_portfolio_exposure_pct:.0%} "
                     "leaves no room for this position"
                 )
             else:
-                quantity = headroom / price
-                notional = quantity * price
+                quantity = headroom / fill_price
+                notional = quantity * fill_price
                 decision.reasons.append("size reduced to fit the portfolio exposure limit")
 
         # Sector concentration.
@@ -273,29 +296,29 @@ class RiskEngine:
             sector_value = self._sector_exposure(portfolio, security.sector)
             if equity > 0 and (sector_value + notional) / equity > settings.risk_max_sector_pct:
                 headroom = max(0.0, equity * settings.risk_max_sector_pct - sector_value)
-                if headroom < price:
+                if headroom < fill_price:
                     decision.violations.append(
                         f"sector '{security.sector}' is at its "
                         f"{settings.risk_max_sector_pct:.0%} concentration limit"
                     )
                 else:
-                    quantity = min(quantity, headroom / price)
-                    notional = quantity * price
+                    quantity = min(quantity, headroom / fill_price)
+                    notional = quantity * fill_price
                     decision.reasons.append(
                         f"size reduced to respect the {security.sector} sector limit"
                     )
 
         # Cash.
         if notional > float(portfolio.cash):
-            affordable = float(portfolio.cash) / price
-            if affordable * price < settings.risk_min_order_notional:
+            affordable = float(portfolio.cash) / fill_price
+            if affordable * fill_price < settings.risk_min_order_notional:
                 decision.violations.append(
                     f"insufficient cash: {float(portfolio.cash):,.2f} buys less than the "
                     f"{settings.risk_min_order_notional:,.2f} minimum order notional"
                 )
             else:
                 quantity = affordable
-                notional = quantity * price
+                notional = quantity * fill_price
                 decision.reasons.append("size reduced to available cash")
 
         decision.quantity = quantity
