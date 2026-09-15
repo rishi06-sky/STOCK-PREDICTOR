@@ -181,8 +181,66 @@ Nothing ever emits `LIVE` on that path. Adding Zerodha Kite Connect replaces
 polling with a pushed, exchange-licensed tick stream — sub-second, tagged
 `LIVE`, NSE and BSE only. See [docs/kite-streaming.md](docs/kite-streaming.md).
 
+### Configuring Alpha Vantage
+
+1. **Get a key.** https://www.alphavantage.co/support/#api-key — an email
+   address, no card. The key is issued on the page immediately.
+
+2. **Put it in `.env`** (not `.env.example`, which is tracked in git):
+
+   ```bash
+   ALPHA_VANTAGE_API_KEY=your-key-here
+   ```
+
+   The variable name is fixed by `Settings.alpha_vantage_api_key`; pydantic
+   reads it case-insensitively with no prefix.
+
+3. **Add it to the chain.** Setting the key alone does nothing — the chain is
+   built strictly from `MARKET_DATA_PROVIDERS`:
+
+   ```bash
+   MARKET_DATA_PROVIDERS=yahoo,stooq,alpha_vantage
+   ```
+
+   Order matters: the chain stops at the first provider returning valid data.
+   Last position reserves the daily quota for symbols the free providers could
+   not serve. Putting it first spends that quota on symbols Yahoo already
+   covers.
+
+4. **Verify without printing the secret:**
+
+   ```bash
+   python -c "import sys; sys.path.insert(0,'backend'); \
+     from app.core.config import Settings; \
+     from app.market_data.providers.alpha_vantage import AlphaVantageProvider; \
+     s=Settings(); print('chain:', s.provider_chain); \
+     print('key present:', bool(s.alpha_vantage_api_key)); \
+     print('configured:', AlphaVantageProvider().is_configured())"
+   ```
+
+   The System page's `market_data_providers` health check reports the same
+   thing at runtime: an unconfigured provider says so explicitly rather than
+   failing silently.
+
+**Run this from the repository root.** `env_file` is a relative path, so
+running from `backend/` looks for `backend/.env`, which does not exist, and
+your key is silently ignored. Use `ENV_FILE=../.env`, or `docker compose up`,
+which passes the variable through explicitly.
+
+**What Alpha Vantage can and cannot replace.** It implements `daily`, `quote`
+and `fundamentals` only — no `intraday`, `news` or `search`. It is not a
+substitute for Yahoo on the free path, and it is not a substitute for Kite at
+all: Kite is the only provider here that emits `LIVE`, exchange-licensed ticks.
+Treat Alpha Vantage as a fallback and a fundamentals source.
+
 **Limitations, stated plainly:**
 
+- Alpha Vantage's free tier is ~25 requests per **day**. A single full ingest
+  over a 40-symbol universe exceeds it. `ALPHA_VANTAGE_RATE_LIMIT_PER_MINUTE`
+  paces requests client-side but cannot raise the vendor's daily cap; once
+  exhausted the API returns HTTP 200 with a prose `Note` body, which the
+  adapter detects and surfaces as a rate-limit error rather than parsing as
+  data.
 - Yahoo's endpoint is undocumented, has no SLA, and can change without notice.
   Review its terms before commercial use.
 - Free tiers are **delayed**. This is a research and paper-trading tool, not a
