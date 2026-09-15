@@ -9,7 +9,13 @@ import pytest
 
 from app.backtesting.engine import Backtester, BacktestConfig, compute_performance_metrics
 from app.market_data.types import Bar, QuoteData
-from app.market_data.validation import detect_gaps, validate_bar, validate_bars, validate_quote
+from app.market_data.validation import (
+    LEVEL_SHIFT_CONFIRM_SESSIONS,
+    detect_gaps,
+    validate_bar,
+    validate_bars,
+    validate_quote,
+)
 from app.models.enums import DataQuality
 from app.sentiment.analyzer import aggregate_sentiment, analyze
 from app.models.enums import SentimentLabel
@@ -147,6 +153,16 @@ class TestPerformanceMetrics:
         assert "error" in compute_performance_metrics(equity, [], initial_capital=100.0)
 
 
+def _sessions(start: date, count: int) -> list[date]:
+    """`count` consecutive weekday dates from `start`."""
+    out, day = [], start
+    while len(out) < count:
+        if day.weekday() < 5:
+            out.append(day)
+        day += timedelta(days=1)
+    return out
+
+
 class TestBarValidation:
     def _bar(self, **kwargs):
         defaults = dict(
@@ -189,6 +205,84 @@ class TestBarValidation:
         result = validate_bars([bar], previous_close=100)
         assert result.valid == []
         assert "split" in result.rejected[0][1]
+
+    def test_a_level_shift_that_holds_is_accepted_and_re_anchors(self):
+        """A 4:1 split, then normal trading at the new level.
+
+        The regression this guards: the reference close was never advanced on
+        a rejected bar, so after any move past the threshold every subsequent
+        session was measured against the pre-split price and rejected too.
+        Ingestion for that security stopped permanently, with no recovery
+        short of editing the database.
+        """
+        days = _sessions(date(2026, 1, 5), 6)
+        bars = [self._bar(trade_date=d, open=25, high=26, low=24, close=25 + i * 0.05)
+                for i, d in enumerate(days)]
+
+        result = validate_bars(bars, previous_close=100)
+
+        assert len(result.valid) == 6, (
+            f"only {len(result.valid)} of 6 sessions accepted -- the reference "
+            "is still pinned to the pre-split close"
+        )
+        assert result.rejected == []
+        assert any("level shifted" in w for w in result.warnings)
+
+    def test_sessions_after_a_level_shift_are_not_rejected_forever(self):
+        """The specific failure mode, stated as a property."""
+        days = _sessions(date(2026, 1, 5), 12)
+        bars = [self._bar(trade_date=d, open=25, high=26, low=24, close=25)
+                for d in days]
+        result = validate_bars(bars, previous_close=100)
+        assert len(result.rejected) < len(bars), "every bar rejected: reference never advanced"
+
+    def test_an_isolated_bad_print_is_still_rejected(self):
+        """A spike that does not hold is bad data, not a corporate action."""
+        days = _sessions(date(2026, 1, 5), 4)
+        bars = [
+            self._bar(trade_date=days[0], open=100, high=105, low=99, close=100),
+            self._bar(trade_date=days[1], open=300, high=310, low=295, close=300),
+            self._bar(trade_date=days[2], open=101, high=105, low=99, close=101),
+            self._bar(trade_date=days[3], open=102, high=105, low=99, close=102),
+        ]
+        result = validate_bars(bars, previous_close=100)
+
+        assert len(result.valid) == 3
+        assert len(result.rejected) == 1
+        assert float(result.rejected[0][0].close) == 300.0
+        assert "split" in result.rejected[0][1]
+
+    def test_a_shift_too_short_to_confirm_stays_quarantined(self):
+        """Fewer sessions than the confirmation window defers, never guesses."""
+        days = _sessions(date(2026, 1, 5), LEVEL_SHIFT_CONFIRM_SESSIONS - 1)
+        bars = [self._bar(trade_date=d, open=25, high=26, low=24, close=25) for d in days]
+        result = validate_bars(bars, previous_close=100)
+
+        assert result.valid == []
+        assert len(result.rejected) == len(bars)
+
+    def test_an_erratic_series_is_not_mistaken_for_a_level_shift(self):
+        """Wild swings that disagree with each other are bad data, not a split."""
+        days = _sessions(date(2026, 1, 5), 4)
+        closes = [300, 20, 400, 15]
+        bars = [self._bar(trade_date=d, open=c, high=c * 1.05, low=c * 0.95, close=c)
+                for d, c in zip(days, closes)]
+        result = validate_bars(bars, previous_close=100)
+
+        assert result.valid == [], "an incoherent series must not re-anchor the reference"
+        assert len(result.rejected) == len(bars)
+
+    def test_a_normal_series_is_untouched(self):
+        days = _sessions(date(2026, 1, 5), 8)
+        bars = [
+            self._bar(trade_date=d, open=100 + i, high=101 + i, low=99 + i, close=100 + i)
+            for i, d in enumerate(days)
+        ]
+        result = validate_bars(bars, previous_close=100)
+
+        assert len(result.valid) == 8
+        assert result.rejected == []
+        assert result.warnings == []
 
     def test_gaps_are_detected(self):
         gaps = detect_gaps(

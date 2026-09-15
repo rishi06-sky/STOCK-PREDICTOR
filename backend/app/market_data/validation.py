@@ -21,6 +21,16 @@ log = get_logger(__name__)
 MAX_DAILY_MOVE_PCT = 60.0
 MAX_INTRADAY_GAP_PCT = 40.0
 
+# How many consecutive sessions must agree on a new price level before it is
+# accepted as a genuine level change rather than bad data.
+#
+# The two cases look identical on the first bar and only diverge afterwards: a
+# bad print is one outlier and the next session returns to the old level, while
+# an unadjusted split holds -- every session after it trades near the new level
+# even though all of them are far from the pre-split close. Waiting for a run
+# of agreeing sessions separates them without guessing on the first bar.
+LEVEL_SHIFT_CONFIRM_SESSIONS = 3
+
 
 @dataclass(slots=True)
 class ValidationResult:
@@ -70,6 +80,13 @@ def validate_bar(bar: Bar, *, today: date | None = None) -> str | None:
     return None
 
 
+def _move_pct(close: Decimal, reference: Decimal | None) -> float | None:
+    """Percentage move between two closes, or None if there is no reference."""
+    if reference is None or reference <= 0:
+        return None
+    return abs(float((close - reference) / reference)) * 100
+
+
 def validate_bars(
     bars: list[Bar], *, previous_close: Decimal | None = None, today: date | None = None
 ) -> ValidationResult:
@@ -89,16 +106,56 @@ def validate_bars(
 
     ordered = [seen[d] for d in sorted(seen)]
     reference = previous_close
+
+    # Bars set aside because they are far from `reference`, still undecided
+    # between "bad print" and "genuine level change". Held as (bar, reason) so
+    # the diagnosis survives if the run is ultimately rejected.
+    pending: list[tuple[Bar, str]] = []
+
+    def _reject_pending() -> None:
+        result.rejected.extend(pending)
+        pending.clear()
+
     for bar in ordered:
-        if reference and reference > 0:
-            move = abs(float((bar.close - reference) / reference)) * 100
-            if move > MAX_DAILY_MOVE_PCT:
-                result.rejected.append(
-                    (bar, f"implausible {move:.1f}% move (possible unadjusted split)")
+        move = _move_pct(bar.close, reference)
+        if move is not None and move > MAX_DAILY_MOVE_PCT:
+            # A run only counts as one level change if its members agree with
+            # each other. If this bar is also far from the last set-aside bar,
+            # the series is simply erratic, so the earlier run is bad data.
+            if pending:
+                step = _move_pct(bar.close, pending[-1][0].close)
+                if step is not None and step > MAX_DAILY_MOVE_PCT:
+                    _reject_pending()
+
+            pending.append(
+                (bar, f"implausible {move:.1f}% move (possible unadjusted split)")
+            )
+
+            if len(pending) >= LEVEL_SHIFT_CONFIRM_SESSIONS:
+                # Sustained: treat it as a real level change, keep the bars and
+                # re-anchor. Without this the reference would stay pinned to the
+                # pre-split close and every later bar would be rejected forever.
+                held = [held_bar for held_bar, _ in pending]
+                result.warnings.append(
+                    f"price level shifted at {held[0].trade_date} and held for "
+                    f"{len(held)} sessions; treating as a corporate action and "
+                    "re-anchoring. Verify against the split history."
                 )
-                continue
+                result.valid.extend(held)
+                reference = held[-1].close
+                pending.clear()
+            continue
+
+        # Back within tolerance of `reference`: whatever was set aside was an
+        # excursion that did not hold, so it was bad data after all.
+        _reject_pending()
         result.valid.append(bar)
         reference = bar.close
+
+    # A run still unconfirmed when the batch ends stays rejected. The next
+    # ingestion re-offers these bars, and once enough sessions accumulate the
+    # run confirms -- so this defers the decision rather than losing the data.
+    _reject_pending()
 
     return result
 
