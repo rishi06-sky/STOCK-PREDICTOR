@@ -20,6 +20,14 @@ log = get_logger(__name__)
 
 BASE_URL = "https://www.alphavantage.co/query"
 
+# Alpha Vantage's Indian coverage is the BSE namespace ("RELIANCE.BSE"); it
+# publishes no NSE equivalent. Mapping an NSE listing onto ".BSE" would quote a
+# different order book under the security we asked about, so NSE is declined
+# and the chain falls through to a provider that does cover it. Set an explicit
+# per-security override in Security.provider_symbols to force a spelling.
+SUFFIX_TO_ALPHA_VANTAGE = {".BO": ".BSE"}
+UNSUPPORTED_SUFFIXES = (".NS",)
+
 
 class AlphaVantageProvider(MarketDataProvider):
     name = "alpha_vantage"
@@ -33,6 +41,28 @@ class AlphaVantageProvider(MarketDataProvider):
 
     def is_configured(self) -> bool:
         return bool(self.api_key)
+
+    @staticmethod
+    def to_alpha_vantage_symbol(symbol: str) -> str:
+        """Map our canonical spelling onto Alpha Vantage's."""
+        upper = symbol.upper()
+        for suffix, replacement in SUFFIX_TO_ALPHA_VANTAGE.items():
+            if upper.endswith(suffix):
+                return upper[: -len(suffix)] + replacement
+        return upper
+
+    def supports_symbol(self, symbol: str) -> bool:
+        return not symbol.upper().endswith(UNSUPPORTED_SUFFIXES)
+
+    def _require_supported(self, symbol: str) -> str:
+        if not self.supports_symbol(symbol):
+            raise ProviderError(
+                self.name,
+                f"{symbol}: Alpha Vantage publishes no NSE listings; "
+                "a BSE symbol or an explicit override is required",
+                retryable=False,
+            )
+        return self.to_alpha_vantage_symbol(symbol)
 
     def _call(self, params: dict) -> dict:
         if not self.is_configured():
@@ -51,10 +81,11 @@ class AlphaVantageProvider(MarketDataProvider):
         return payload
 
     def fetch_daily_bars(self, symbol: str, start: date, end: date) -> list[Bar]:
+        vendor_symbol = self._require_supported(symbol)
         payload = self._call(
             {
                 "function": "TIME_SERIES_DAILY_ADJUSTED",
-                "symbol": symbol,
+                "symbol": vendor_symbol,
                 "outputsize": "full" if (end - start).days > 100 else "compact",
             }
         )
@@ -89,7 +120,8 @@ class AlphaVantageProvider(MarketDataProvider):
         return sorted(bars, key=lambda b: b.trade_date)
 
     def fetch_quote(self, symbol: str) -> QuoteData:
-        payload = self._call({"function": "GLOBAL_QUOTE", "symbol": symbol})
+        vendor_symbol = self._require_supported(symbol)
+        payload = self._call({"function": "GLOBAL_QUOTE", "symbol": vendor_symbol})
         quote = payload.get("Global Quote") or {}
         price = quote.get("05. price")
         if not price:
@@ -113,7 +145,8 @@ class AlphaVantageProvider(MarketDataProvider):
         )
 
     def fetch_fundamentals(self, symbol: str) -> FundamentalsData:
-        payload = self._call({"function": "OVERVIEW", "symbol": symbol})
+        vendor_symbol = self._require_supported(symbol)
+        payload = self._call({"function": "OVERVIEW", "symbol": vendor_symbol})
         if not payload.get("Symbol"):
             raise SymbolNotFound(self.name, symbol)
         return FundamentalsData(

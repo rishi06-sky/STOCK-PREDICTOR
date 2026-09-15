@@ -150,6 +150,16 @@ class MarketDataProvider(abc.ABC):
     def is_configured(self) -> bool:
         return True
 
+    def supports_symbol(self, symbol: str) -> bool:
+        """Whether this provider can address `symbol` at all.
+
+        Declining is how a provider says "I do not carry this listing" without
+        guessing. A provider that covers only one market must say so here:
+        tickers collide across exchanges, so answering with whatever instrument
+        shares the spelling would silently price the wrong company.
+        """
+        return True
+
     # ------------------------------------------------------------------ fetches
     def fetch_daily_bars(
         self, symbol: str, start: date, end: date

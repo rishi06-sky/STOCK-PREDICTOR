@@ -35,6 +35,8 @@ class StooqProvider(MarketDataProvider):
     def to_stooq_symbol(symbol: str) -> str:
         """Map our symbol conventions onto Stooq's."""
         s = symbol.lower()
+        if s.startswith("^"):
+            return s                # index tickers are global, never suffixed
         if s.endswith(".ns"):
             return s[:-3] + ".in"   # NSE
         if s.endswith(".bo"):

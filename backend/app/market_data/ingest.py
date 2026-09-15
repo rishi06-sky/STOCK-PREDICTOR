@@ -108,6 +108,9 @@ class IngestionService:
             if "daily" not in provider.capabilities or not provider.is_configured():
                 continue
             psym = security.provider_symbol(provider.name)
+            if not provider.supports_symbol(psym):
+                errors[provider.name] = f"does not cover {psym}"
+                continue
             try:
                 bars = provider.fetch_daily_bars(psym, start, end)
             except Exception as exc:
@@ -196,6 +199,9 @@ class IngestionService:
             if "quote" not in provider.capabilities or not provider.is_configured():
                 continue
             psym = security.provider_symbol(provider.name)
+            if not provider.supports_symbol(psym):
+                errors[provider.name] = f"does not cover {psym}"
+                continue
             try:
                 quote = provider.fetch_quote(psym)
             except Exception as exc:
@@ -246,10 +252,12 @@ class IngestionService:
         for provider in self.chain.providers:
             if "intraday" not in provider.capabilities or not provider.is_configured():
                 continue
+            psym = security.provider_symbol(provider.name)
+            if not provider.supports_symbol(psym):
+                errors[provider.name] = f"does not cover {psym}"
+                continue
             try:
-                bars = provider.fetch_intraday_bars(
-                    security.provider_symbol(provider.name), interval, lookback_days
-                )
+                bars = provider.fetch_intraday_bars(psym, interval, lookback_days)
             except Exception as exc:
                 errors[provider.name] = str(exc)
                 continue
