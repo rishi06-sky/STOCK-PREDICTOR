@@ -8,18 +8,38 @@
 #
 # Everything here is idempotent: on a warm container each step finds its work
 # already done and returns in a second or two.
+#
+# It runs in ASYNC mode, so the session starts immediately and this continues
+# in the background. That trade is deliberate -- a synchronous hook holds up
+# every session, including the ones that never touch the database -- but it
+# does mean a session can begin before the environment is ready. If a command
+# fails early on with a missing module, a missing table, or a refused
+# connection on 5432, this is probably still running: check
+# /tmp/stockintel-session-start.log and wait for the final "ready" line.
 set -euo pipefail
 
 # Local machines already have a working environment; only the remote container
-# needs rebuilding. Remove this guard if you want it everywhere.
+# needs rebuilding. Remove this guard if you want it everywhere. The guard
+# comes first so a local session exits silently rather than announcing an
+# async run it is not going to perform.
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
 fi
 
+# Hand the session back now and keep working in the background. The timeout is
+# sized for a genuinely cold container, where pip has to build the scientific
+# stack (numpy, pandas, scikit-learn, xgboost, lightgbm) and npm has to fetch
+# the whole Next.js tree; a warm one finishes in a few seconds.
+echo '{"async": true, "asyncTimeout": 600000}'
+
 ROOT="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 cd "$ROOT"
 
-log() { printf '[session-start] %s\n' "$*"; }
+# In async mode nothing is watching stdout, so mirror progress to a file the
+# session can read when it wants to know whether setup has finished.
+LOG=/tmp/stockintel-session-start.log
+: > "$LOG"
+log() { printf '[session-start] %s\n' "$*" | tee -a "$LOG"; }
 
 # --------------------------------------------------------------- services
 # PostgreSQL and Redis are installed in the image but not running. The data
@@ -82,9 +102,15 @@ log "seeding reference data"
 )
 
 # --------------------------------------------------------------- session env
-# Written to CLAUDE_ENV_FILE so every command in the session inherits them and
-# nobody has to remember that the checked-in .env points at Docker hostnames
+# Written to CLAUDE_ENV_FILE so commands in the session inherit them and nobody
+# has to remember that the checked-in .env points at Docker hostnames
 # (postgres:5432, redis:6379) that do not resolve outside compose.
+#
+# Running async, this file is written after the session has already started, so
+# do not rely on these reaching an early command. Anything this hook starts
+# itself is given its environment explicitly rather than through this file, and
+# a session that hits a connection error against postgres:5432 can just export
+# DATABASE_URL itself.
 if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
   {
     echo 'export DATABASE_URL="postgresql+psycopg://stockintel:stockintel@localhost:5432/stockintel"'

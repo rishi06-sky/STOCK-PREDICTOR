@@ -142,9 +142,17 @@ API docs at <http://localhost:8000/docs> (disabled in production).
 `.claude/hooks/session-start.sh` runs every one of the above steps
 automatically at session start, then brings the API and dashboard up. Sessions
 get a fresh container, so without it each one begins by rebuilding the
-environment by hand. The hook is idempotent and takes a few seconds on a warm
-container; it exits immediately when `CLAUDE_CODE_REMOTE` is unset, so it does
-nothing on a local machine.
+environment by hand. The hook is idempotent and exits immediately when
+`CLAUDE_CODE_REMOTE` is unset, so it does nothing on a local machine.
+
+It runs **asynchronously**: the session starts straight away and the hook
+continues in the background — a few seconds on a warm container, longer on a
+cold one where pip has to build the scientific stack. The cost of that is a
+race: a command issued in the first moments of a session can beat the setup.
+If something fails with a missing module, a missing table, or a refused
+connection on port 5432, check `/tmp/stockintel-session-start.log` and wait for
+its final `ready` line. To trade startup latency for certainty instead, delete
+the `echo '{"async": ...}'` line from the hook and it becomes synchronous.
 
 ---
 
