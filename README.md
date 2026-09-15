@@ -112,6 +112,11 @@ docker compose down -v              # ALSO DELETES ALL DATA
 ```bash
 ./scripts/dev-services.sh           # start PostgreSQL and Redis
 
+# once per machine: the role and databases the app and the tests connect as
+sudo -u postgres psql -c "CREATE ROLE stockintel LOGIN PASSWORD 'stockintel' CREATEDB"
+sudo -u postgres createdb -O stockintel stockintel
+sudo -u postgres createdb -O stockintel stockintel_test
+
 cd backend
 python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
 ./.venv/bin/alembic upgrade head
@@ -125,7 +130,21 @@ python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
 cd frontend && npm install && npm run dev
 ```
 
+The checked-in `.env` points at the Docker Compose hostnames (`postgres:5432`,
+`redis:6379`), which do not resolve outside compose. Outside it, export
+`DATABASE_URL=postgresql+psycopg://stockintel:stockintel@localhost:5432/stockintel`
+and `REDIS_URL=redis://localhost:6379/0`.
+
 API docs at <http://localhost:8000/docs> (disabled in production).
+
+### Claude Code on the web
+
+`.claude/hooks/session-start.sh` runs every one of the above steps
+automatically at session start, then brings the API and dashboard up. Sessions
+get a fresh container, so without it each one begins by rebuilding the
+environment by hand. The hook is idempotent and takes a few seconds on a warm
+container; it exits immediately when `CLAUDE_CODE_REMOTE` is unset, so it does
+nothing on a local machine.
 
 ---
 
