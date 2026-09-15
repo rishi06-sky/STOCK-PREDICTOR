@@ -8,11 +8,19 @@ export function formatNumber(value: number | null | undefined, digits = 2): stri
   });
 }
 
+/**
+ * Format an amount in its own currency.
+ *
+ * The default matches the backend's `base_currency`, which the seeded universe
+ * is built around -- but pass the currency the API supplied wherever there is
+ * one, so a price is never relabelled as something it is not.
+ */
 export function formatCurrency(
   value: number | null | undefined,
-  currency = 'USD',
+  currency: string | null | undefined = 'INR',
   digits = 2,
 ): string {
+  currency = currency || 'INR';
   if (value === null || value === undefined || Number.isNaN(value)) return '--';
   try {
     return value.toLocaleString(undefined, {

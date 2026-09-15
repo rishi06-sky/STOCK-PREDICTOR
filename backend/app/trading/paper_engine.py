@@ -228,7 +228,7 @@ class PaperTradingEngine:
 
 def get_or_create_paper_portfolio(
     db: Session, user_id: int, *, name: str = "Paper Portfolio",
-    currency: str = "USD",
+    currency: str | None = None,
 ) -> Portfolio:
     from app.models.enums import TradingMode
 
@@ -239,7 +239,8 @@ def get_or_create_paper_portfolio(
         return portfolio
 
     portfolio = Portfolio(
-        user_id=user_id, name=name, mode=TradingMode.PAPER, currency=currency,
+        user_id=user_id, name=name, mode=TradingMode.PAPER,
+        currency=currency or settings.base_currency,
         starting_cash=settings.paper_starting_cash,
         cash=settings.paper_starting_cash,
         peak_equity=settings.paper_starting_cash,

@@ -5,7 +5,7 @@ import { Shell } from '@/components/Shell';
 export const metadata: Metadata = {
   title: 'Stock Intelligence',
   description:
-    'AI-assisted market monitoring, signal generation and paper trading across NSE, BSE, NYSE and NASDAQ.',
+    'AI-assisted market monitoring, signal generation and paper trading across NSE and BSE.',
 };
 
 export const viewport: Viewport = {

@@ -122,6 +122,12 @@ class Settings(BaseSettings):
     trading_mode: TradingMode = "paper"
     live_trading_enabled: bool = False          # second, independent switch
     kill_switch_engaged: bool = False
+    # Settlement currency for the whole platform. The seeded universe is
+    # single-currency on purpose: a portfolio holding both INR and USD
+    # securities would have to convert to value itself, and the free data path
+    # has no FX source to convert with. Change this only alongside the seeded
+    # universe in app/database/seed.py.
+    base_currency: str = "INR"
     paper_starting_cash: float = 1_000_000.0
     commission_bps: float = 3.0                 # 0.03% per side
     slippage_bps: float = 5.0                   # 0.05% adverse

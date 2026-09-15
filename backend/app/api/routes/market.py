@@ -106,6 +106,7 @@ def get_quote(
     return QuoteOut(
         security_id=security.id, symbol=security.symbol,
         exchange=security.exchange.code if security.exchange else None,
+        currency=security.currency,
         price=float(quote.price),
         previous_close=float(quote.previous_close) if quote.previous_close else None,
         change=float(quote.change) if quote.change else None,
@@ -192,6 +193,7 @@ def market_movers(
         QuoteOut(
             security_id=s.id, symbol=s.symbol,
             exchange=s.exchange.code if s.exchange else None,
+            currency=s.currency,
             price=float(q.price),
             previous_close=float(q.previous_close) if q.previous_close else None,
             change=float(q.change) if q.change else None, change_pct=q.change_pct,
@@ -222,6 +224,7 @@ def indices(db: Session = Depends(get_db), _: None = Depends(rate_limit)):
         QuoteOut(
             security_id=s.id, symbol=s.symbol,
             exchange=s.exchange.code if s.exchange else None,
+            currency=s.currency,
             price=float(q.price),
             previous_close=float(q.previous_close) if q.previous_close else None,
             change=float(q.change) if q.change else None, change_pct=q.change_pct,

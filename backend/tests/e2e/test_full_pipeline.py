@@ -59,7 +59,7 @@ def pipeline_db(seeded_db):
     )
     seeded_db.add(user)
     seeded_db.flush()
-    get_or_create_paper_portfolio(seeded_db, user.id, currency="USD")
+    get_or_create_paper_portfolio(seeded_db, user.id)
     seeded_db.flush()
     return seeded_db
 
