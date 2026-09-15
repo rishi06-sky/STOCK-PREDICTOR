@@ -72,6 +72,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.backend
+      secrets: [proxy_ca]
     restart: unless-stopped
     environment:
       <<: *backend-env
@@ -93,6 +94,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.backend
+      secrets: [proxy_ca]
     restart: unless-stopped
     environment:
       <<: *backend-env
@@ -111,6 +113,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.frontend
+      secrets: [proxy_ca]
       args:
         NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000/api/v1}
     restart: unless-stopped
@@ -118,6 +121,13 @@ services:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on: [api]
     networks: [internal]
+
+# Only needed behind a TLS-intercepting proxy: point PROXY_CA_FILE at your CA
+# and the package managers in the build will trust it. The default is an empty
+# file, which every build step treats as "no CA supplied".
+secrets:
+  proxy_ca:
+    file: ${PROXY_CA_FILE:-/dev/null}
 
 volumes:
   postgres_data:
