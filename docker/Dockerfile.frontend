@@ -1,8 +1,15 @@
 # syntax=docker/dockerfile:1
+
+# Behind a TLS-intercepting proxy, hand the build the proxy CA with
+#   docker build --secret id=proxy_ca,src=/path/to/ca.crt ...
+# The secret is optional and is never written into a layer; with no secret
+# supplied the guarded blocks below are no-ops and npm uses its default store.
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci
+RUN --mount=type=secret,id=proxy_ca,target=/tmp/proxy-ca.crt \
+    if [ -s /tmp/proxy-ca.crt ]; then export NODE_EXTRA_CA_CERTS=/tmp/proxy-ca.crt; fi; \
+    npm ci
 
 FROM node:22-alpine AS builder
 WORKDIR /app
@@ -10,7 +17,9 @@ ARG NEXT_PUBLIC_API_BASE=http://localhost:8000/api/v1
 ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
 COPY --from=deps /app/node_modules ./node_modules
 COPY frontend/ .
-RUN npm run build
+RUN --mount=type=secret,id=proxy_ca,target=/tmp/proxy-ca.crt \
+    if [ -s /tmp/proxy-ca.crt ]; then export NODE_EXTRA_CA_CERTS=/tmp/proxy-ca.crt; fi; \
+    npm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app

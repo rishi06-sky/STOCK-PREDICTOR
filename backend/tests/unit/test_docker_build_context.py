@@ -19,6 +19,16 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DOCKERIGNORE = REPO_ROOT / ".dockerignore"
+DOCKER_DIR = REPO_ROOT / "docker"
+
+# The backend image copies only `backend/`, so inside the container there is no
+# repo root to inspect. Skip there rather than fail; when the checkout *is*
+# present (dev machines, CI) every assertion below still runs, so the guard
+# against deleting .dockerignore is preserved where it can actually fire.
+pytestmark = pytest.mark.skipif(
+    not DOCKER_DIR.is_dir(),
+    reason="not a source checkout (running inside the built image)",
+)
 
 # Paths that must never reach the build context, with why they matter.
 MUST_EXCLUDE = [
@@ -95,3 +105,41 @@ def test_the_example_env_is_kept_even_though_env_files_are_excluded():
     """.env is excluded; .env.example is the documented template and must stay."""
     assert _is_excluded(".env")
     assert not _is_excluded(".env.example")
+
+
+def _dockerfile(name: str) -> str:
+    return (DOCKER_DIR / name).read_text()
+
+
+def test_backend_image_installs_the_openmp_runtime():
+    """LightGBM dlopens libgomp.so.1; without it `import lightgbm` raises OSError.
+
+    python:3.11-slim does not ship it, so dropping this package turns every
+    prediction into an import error at runtime rather than a build failure.
+    """
+    assert "libgomp1" in _dockerfile("Dockerfile.backend")
+
+
+def test_backend_image_installs_curl_for_its_healthcheck():
+    """The HEALTHCHECK shells out to curl, which slim does not include."""
+    backend = _dockerfile("Dockerfile.backend")
+    assert "curl" in backend
+    assert "HEALTHCHECK" in backend
+
+
+@pytest.mark.parametrize("name", ["Dockerfile.backend", "Dockerfile.frontend"])
+def test_the_proxy_ca_secret_is_optional(name):
+    """Builds must succeed without `--secret id=proxy_ca`.
+
+    The CA is only needed behind a TLS-intercepting proxy. Every RUN that
+    mounts it has to test the file before exporting a CA variable -- pointing
+    pip or node at a path that does not exist breaks an ordinary build.
+    """
+    text = _dockerfile(name)
+    for line in text.splitlines():
+        if "type=secret,id=proxy_ca" in line:
+            target = line.split("target=")[1].split()[0].rstrip(" \\")
+            assert f"[ -s {target} ]" in text, (
+                f"{name} mounts the proxy CA at {target} without guarding on its "
+                "presence, so a build without the secret would break"
+            )

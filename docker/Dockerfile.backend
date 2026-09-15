@@ -6,15 +6,25 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# libgomp is required by LightGBM and XGBoost at runtime.
+# libgomp is required by LightGBM and XGBoost at runtime; curl backs the
+# HEALTHCHECK below. Every pin in requirements.txt resolves to a manylinux
+# wheel, so no compiler is needed, and psycopg[binary] vendors its own libpq --
+# hence no build-essential or libpq-dev. Reinstate them if a future pin has to
+# be built from source.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential libpq-dev libgomp1 curl \
+        libgomp1 curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY backend/requirements.txt .
-RUN pip install -r requirements.txt
+# Behind a TLS-intercepting proxy, hand the build the proxy CA with
+#   docker build --secret id=proxy_ca,src=/path/to/ca.crt ...
+# The secret is optional and is never written into a layer; with no secret
+# supplied this is a no-op and pip uses its bundled certifi store.
+RUN --mount=type=secret,id=proxy_ca,target=/tmp/proxy-ca.crt \
+    if [ -s /tmp/proxy-ca.crt ]; then export PIP_CERT=/tmp/proxy-ca.crt; fi; \
+    pip install -r requirements.txt
 
 COPY backend/ .
 

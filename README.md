@@ -112,6 +112,42 @@ docker compose down                 # stop and remove containers
 docker compose down -v              # ALSO DELETES ALL DATA
 ```
 
+### Building behind a corporate proxy
+
+Both images fetch packages from the network (`pip install`, `npm ci`). If your
+network terminates TLS with its own certificate authority, those fetches fail
+with `certificate verify failed`. Pass the CA in as a build secret:
+
+```bash
+PROXY_CA_FILE=/path/to/your-ca.crt docker compose build
+```
+
+`docker compose build` has no `--secret` flag, so the CA is wired in as a
+build secret in `docker-compose.yml` and selected by `PROXY_CA_FILE`. Building
+a Dockerfile directly takes the flag instead:
+
+```bash
+docker build --secret id=proxy_ca,src=/path/to/your-ca.crt \
+  -f docker/Dockerfile.backend -t stockintel-backend .
+```
+
+The CA is optional either way: it is only consulted while `pip` and `npm` run
+and is never written into a layer. `PROXY_CA_FILE` defaults to an empty file,
+which the build treats as "no CA supplied", so ordinary environments need no
+extra flags and behave exactly as before.
+
+If your network also blocks Docker Hub, point the daemon at a pull-through
+mirror in `/etc/docker/daemon.json` and restart it:
+
+```json
+{ "registry-mirrors": ["https://mirror.gcr.io"] }
+```
+
+The backend image additionally installs `libgomp1` and `curl` from the Debian
+archives, so `deb.debian.org` must be reachable at build time. LightGBM loads
+`libgomp.so.1` dynamically and will not import without it, and the container
+`HEALTHCHECK` shells out to `curl`.
+
 ---
 
 ## Local development (no Docker)
