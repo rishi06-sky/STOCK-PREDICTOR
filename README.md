@@ -250,6 +250,18 @@ polling with a pushed, exchange-licensed tick stream — sub-second, tagged
    not serve. Putting it first spends that quota on symbols Yahoo already
    covers.
 
+   **Alpha Vantage does not publish NSE listings.** Its Indian coverage is the
+   BSE namespace (`RELIANCE.BSE`). Because 21 of the 23 seeded securities are
+   NSE, Alpha Vantage declines most of this universe and the chain falls
+   through to Yahoo. It is not rewritten onto `.BSE`: that would answer with a
+   different order book under the security you asked about. To force a
+   spelling for one security, set an override:
+
+   ```sql
+   UPDATE securities SET provider_symbols = '{"alpha_vantage": "RELIANCE.BSE"}'
+    WHERE symbol = 'RELIANCE';
+   ```
+
 4. **Verify without printing the secret:**
 
    ```bash

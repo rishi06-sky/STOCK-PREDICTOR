@@ -141,6 +141,9 @@ class TestProviderFailure:
             def is_configured(self):
                 return True
 
+            def supports_symbol(self, symbol):
+                return True
+
             def fetch_daily_bars(self, symbol, start, end):
                 raise ProviderUnavailable("broken", "simulated outage")
 
@@ -178,6 +181,9 @@ class TestProviderFailure:
             def is_configured(self):
                 return True
 
+            def supports_symbol(self, symbol):
+                return True
+
             def fetch_daily_bars(self, symbol, start, end):
                 raise ProviderUnavailable("failing", "down")
 
@@ -190,6 +196,9 @@ class TestProviderFailure:
             capabilities = {"daily"}
 
             def is_configured(self):
+                return True
+
+            def supports_symbol(self, symbol):
                 return True
 
             def fetch_daily_bars(self, symbol, start, end):

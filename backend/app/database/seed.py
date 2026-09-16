@@ -29,9 +29,9 @@ MARKETS = [
 
 EXCHANGES = [
     {"market": "IN", "code": "NSE", "name": "National Stock Exchange of India",
-     "open_time": "09:15", "close_time": "15:30", "yahoo_suffix": ".NS"},
+     "open_time": "09:15", "close_time": "15:30", "exchange_suffix": ".NS"},
     {"market": "IN", "code": "BSE", "name": "BSE Limited",
-     "open_time": "09:15", "close_time": "15:30", "yahoo_suffix": ".BO"},
+     "open_time": "09:15", "close_time": "15:30", "exchange_suffix": ".BO"},
 ]
 
 # (symbol, name, sector, industry)
@@ -96,7 +96,7 @@ def seed_reference_data(db: Session) -> dict[str, int]:
                 market_id=market_ids[spec["market"]],
                 code=spec["code"], name=spec["name"],
                 open_time=spec["open_time"], close_time=spec["close_time"],
-                yahoo_suffix=spec["yahoo_suffix"] or None,
+                exchange_suffix=spec["exchange_suffix"] or None,
             )
             db.add(exchange)
             db.flush()
@@ -136,8 +136,9 @@ def seed_reference_data(db: Session) -> dict[str, int]:
             Security(
                 exchange_id=exchange.id, symbol=symbol, name=name,
                 asset_type=AssetType.INDEX, currency=currency,
-                # Index tickers carry their own prefix; do not append a suffix.
-                provider_symbols={"yahoo": symbol},
+                # Index tickers carry their own prefix; do not append a suffix
+                # for any provider.
+                provider_symbols={"*": symbol},
             )
         )
         counts["indices"] += 1

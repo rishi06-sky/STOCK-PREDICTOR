@@ -48,8 +48,11 @@ class Exchange(Base, TimestampMixin):
     # Local-time trading session, interpreted in the parent market's timezone.
     open_time: Mapped[str] = mapped_column(String(8), nullable=False)   # "09:15"
     close_time: Mapped[str] = mapped_column(String(8), nullable=False)  # "15:30"
-    # Provider symbol decoration, e.g. ".NS" for NSE on Yahoo Finance.
-    yahoo_suffix: Mapped[str | None] = mapped_column(String(8))
+    # The canonical symbol decoration for this exchange, e.g. ".NS" for NSE.
+    # Every provider translates from this one spelling into its own namespace
+    # (Stooq ".in", Kite "NSE:", Alpha Vantage ".BSE"), so it is not specific
+    # to any one vendor.
+    exchange_suffix: Mapped[str | None] = mapped_column(String(8))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     market: Mapped[Market] = relationship(back_populates="exchanges")
@@ -87,11 +90,24 @@ class Security(Base, TimestampMixin):
     exchange: Mapped[Exchange] = relationship(back_populates="securities")
 
     def provider_symbol(self, provider: str) -> str:
+        """This listing's symbol in `provider`'s namespace.
+
+        Providers translate from one canonical spelling -- the exchange-suffixed
+        form, e.g. "RELIANCE.NS" -- into their own convention. Handing a
+        provider the bare symbol is not a harmless fallback: Stooq reads a bare
+        ticker as a US listing, so "RELIANCE" fetches `reliance.us`, a different
+        instrument quoted in USD, which would be stored against an INR security.
+        The suffix therefore applies to every provider, not just Yahoo.
+        """
         overrides = self.provider_symbols or {}
         if provider in overrides:
             return overrides[provider]
-        if provider == "yahoo" and self.exchange and self.exchange.yahoo_suffix:
-            return f"{self.symbol}{self.exchange.yahoo_suffix}"
+        # "*" pins one spelling for every provider. Index tickers need this:
+        # they carry their own prefix ("^NSEI") and must never be suffixed.
+        if "*" in overrides:
+            return overrides["*"]
+        if self.exchange and self.exchange.exchange_suffix:
+            return f"{self.symbol}{self.exchange.exchange_suffix}"
         return self.symbol
 
 

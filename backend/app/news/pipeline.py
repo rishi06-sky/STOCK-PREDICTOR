@@ -80,8 +80,12 @@ class NewsPipeline:
         for provider in self.chain.providers:
             if "news" not in provider.capabilities or not provider.is_configured():
                 continue
+            psym = security.provider_symbol(provider.name)
+            if not provider.supports_symbol(psym):
+                report.errors.append(f"{provider.name}: does not cover {psym}")
+                continue
             try:
-                items = provider.fetch_news(security.provider_symbol(provider.name), limit)
+                items = provider.fetch_news(psym, limit)
             except Exception as exc:
                 report.errors.append(f"{provider.name}: {exc}")
                 continue
