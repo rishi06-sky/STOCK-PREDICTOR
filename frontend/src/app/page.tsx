@@ -38,7 +38,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-4">
       {/* ---------------------------------------------------- market strip */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {indices.data?.map((index) => (
           <Panel key={index.security_id} bodyClassName="p-3">
             <div className="flex items-start justify-between gap-2">
@@ -66,7 +66,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* ------------------------------------------------ opportunities */}
         <Panel
           className="lg:col-span-2"
@@ -196,7 +196,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* -------------------------------------------------------- movers */}
         <Panel title="Market movers" bodyClassName="p-0" className="lg:col-span-2">
           {!movers.data && <Loading />}

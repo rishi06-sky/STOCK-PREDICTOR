@@ -82,7 +82,7 @@ export default function PortfolioPage() {
 
       {pf && (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
             <Panel bodyClassName="p-3">
               <Stat label="Equity" value={formatCurrency(pf.equity, pf.currency, 0)} />
             </Panel>
@@ -126,7 +126,7 @@ export default function PortfolioPage() {
             </Panel>
           )}
 
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <Panel title="Equity curve (LIVE)" className="lg:col-span-2" bodyClassName="p-3">
               {performance.data && performance.data.equity_curve.length > 1 ? (
                 <div className="h-64">
