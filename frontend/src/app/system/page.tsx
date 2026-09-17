@@ -102,7 +102,7 @@ export default function SystemPage() {
         <ErrorBox message="KILL SWITCH ENGAGED — all new orders are blocked in paper and live mode." />
       )}
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Panel title="Components" className="lg:col-span-2" bodyClassName="p-0">
           {health.isLoading && <Loading />}
           {health.data && (

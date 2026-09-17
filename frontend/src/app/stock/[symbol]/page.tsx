@@ -242,7 +242,7 @@ export default function StockPage() {
         )}
       </Panel>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* ------------------------------------------------------- signal */}
         <Panel title="Signal" className="lg:col-span-2">
           {!signal && (
@@ -333,7 +333,7 @@ export default function StockPage() {
         </Panel>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* ------------------------------------------------- fundamentals */}
         <Panel title="Fundamentals">
           {fundamentals.score === null ? (

@@ -122,7 +122,7 @@ export default function ModelsPage() {
       )}
 
       {selected && (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Panel title="Validation metrics">
             {detail.isLoading && <Loading />}
             {detail.data && (
