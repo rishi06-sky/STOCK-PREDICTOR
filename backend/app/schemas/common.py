@@ -203,6 +203,10 @@ class PositionOut(BaseModel):
     take_profit: float | None
     price_is_stale: bool
     opened_at: datetime
+    currency: str = ""
+    # False when the position is priced in a currency the portfolio totals
+    # cannot express, so its value is shown but not summed.
+    counted_in_totals: bool = True
 
 
 class PortfolioOut(BaseModel):

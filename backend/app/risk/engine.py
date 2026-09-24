@@ -20,6 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.money import is_convertible
 from app.core.logging import get_logger
 from app.models.enums import OrderSide, PositionStatus, RiskLevel
 from app.models.market import Quote, Security
@@ -138,15 +139,26 @@ class RiskEngine:
 
     # --------------------------------------------------------------- equity
     def portfolio_equity(self, portfolio: Portfolio) -> tuple[float, float]:
-        """Return (equity, positions_value) using the latest known prices."""
+        """Return (equity, positions_value) using the latest known prices.
+
+        Holdings quoted in another currency are left out: without an FX rate
+        they cannot be added to this total, and this total is what sizes every
+        position and enforces the exposure and drawdown limits. Understating
+        equity makes those limits stricter, which is the safe direction to err
+        in; mixing currencies would silently loosen them.
+        """
         positions_value = 0.0
-        holdings = self.db.scalars(
-            select(Holding).where(
+        rows = self.db.execute(
+            select(Holding, Security)
+            .join(Security, Security.id == Holding.security_id)
+            .where(
                 Holding.portfolio_id == portfolio.id,
                 Holding.status == PositionStatus.OPEN,
             )
         ).all()
-        for holding in holdings:
+        for holding, security in rows:
+            if not is_convertible(security.currency, portfolio.currency):
+                continue
             quote = self.db.get(Quote, holding.security_id)
             price = float(quote.price) if quote else float(holding.average_cost)
             positions_value += price * float(holding.quantity)
@@ -173,6 +185,15 @@ class RiskEngine:
             return decision
         if price <= 0:
             decision.violations.append("invalid price")
+            return decision
+        # Prevent the mismatch rather than cope with it later: with no FX rate,
+        # a position in another currency could never be valued alongside the
+        # rest of this portfolio.
+        if not is_convertible(security.currency, portfolio.currency):
+            decision.violations.append(
+                f"{security.symbol} is priced in {security.currency or 'an unknown currency'} "
+                f"but the portfolio is in {portfolio.currency}; no FX rate is available"
+            )
             return decision
 
         equity, positions_value = self.portfolio_equity(portfolio)
