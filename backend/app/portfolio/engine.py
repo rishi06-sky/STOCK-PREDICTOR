@@ -11,6 +11,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.money import is_convertible
 from app.core.logging import get_logger
 from app.models.enums import DataQuality, PositionStatus
 from app.models.market import PriceData, Quote, Security
@@ -36,6 +37,10 @@ class PositionView:
     take_profit: float | None
     price_is_stale: bool
     opened_at: datetime
+    currency: str = ""
+    # False when the holding's currency differs from the portfolio's, so its
+    # value is reported but deliberately left out of the totals.
+    counted_in_totals: bool = True
 
     def as_dict(self) -> dict:
         return {
@@ -51,6 +56,8 @@ class PositionView:
             "take_profit": round(self.take_profit, 4) if self.take_profit else None,
             "price_is_stale": self.price_is_stale,
             "opened_at": self.opened_at.isoformat(),
+            "currency": self.currency,
+            "counted_in_totals": self.counted_in_totals,
         }
 
 
@@ -150,8 +157,20 @@ class PortfolioEngine:
             market_value = price * quantity
             position_pnl = (price - cost) * quantity
 
-            positions_value += market_value
-            unrealized += position_pnl
+            # A holding quoted in another currency cannot be added to this
+            # portfolio's total without an FX rate, and the platform has none.
+            # Report it, but keep it out of the arithmetic -- understating
+            # equity is recoverable, silently mixing currencies is not.
+            counted = is_convertible(security.currency, portfolio.currency)
+            if counted:
+                positions_value += market_value
+                unrealized += position_pnl
+            else:
+                warnings.append(
+                    f"{security.symbol}: priced in {security.currency or 'an unknown currency'}, "
+                    f"but this portfolio is in {portfolio.currency}; excluded from totals "
+                    f"because no FX rate is available"
+                )
             positions.append(
                 PositionView(
                     security_id=security.id, symbol=security.symbol, name=security.name,
@@ -163,13 +182,20 @@ class PortfolioEngine:
                     stop_loss=float(holding.stop_loss) if holding.stop_loss else None,
                     take_profit=float(holding.take_profit) if holding.take_profit else None,
                     price_is_stale=stale, opened_at=holding.opened_at,
+                    currency=security.currency, counted_in_totals=counted,
                 )
             )
 
         cash = float(portfolio.cash)
         equity = cash + positions_value
         for position in positions:
-            position.weight = position.market_value / equity if equity > 0 else 0.0
+            # An excluded position has no meaningful share of an equity figure
+            # its own value was kept out of.
+            position.weight = (
+                position.market_value / equity
+                if equity > 0 and position.counted_in_totals
+                else 0.0
+            )
 
         realized = float(
             self.db.scalar(

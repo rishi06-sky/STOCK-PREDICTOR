@@ -233,12 +233,20 @@ export default function PortfolioPage() {
                           {position.price_is_stale && (
                             <span className="ml-1 text-2xs text-bear">STALE</span>
                           )}
+                          {!position.counted_in_totals && (
+                            <span
+                              className="ml-1 text-2xs text-bear"
+                              title={`Priced in ${position.currency || 'an unknown currency'}; not included in the portfolio totals because no FX rate is available.`}
+                            >
+                              NOT IN TOTAL
+                            </span>
+                          )}
                         </td>
                         <td className="text-ink-muted">{position.sector ?? '--'}</td>
                         <td className="text-right font-mono tabular-nums">{formatNumber(position.quantity, 2)}</td>
                         <td className="text-right font-mono tabular-nums">{formatNumber(position.average_cost)}</td>
-                        <td className="text-right font-mono tabular-nums">{formatCurrency(position.current_price, pf?.currency)}</td>
-                        <td className="text-right font-mono tabular-nums">{formatNumber(position.market_value, 0)}</td>
+                        <td className="text-right font-mono tabular-nums">{formatCurrency(position.current_price, position.currency || pf?.currency)}</td>
+                        <td className="text-right font-mono tabular-nums">{formatCurrency(position.market_value, position.currency || pf?.currency, 0)}</td>
                         <td className={`text-right font-mono tabular-nums ${directionClass(position.unrealized_pnl)}`}>
                           {formatNumber(position.unrealized_pnl, 2)}
                         </td>

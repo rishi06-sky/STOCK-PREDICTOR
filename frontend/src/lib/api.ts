@@ -164,6 +164,8 @@ export interface Position {
   take_profit: number | null;
   price_is_stale: boolean;
   opened_at: string;
+  currency: string;
+  counted_in_totals: boolean;
 }
 
 export interface Portfolio {
