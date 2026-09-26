@@ -10,7 +10,10 @@ import { api, fetcher, type Page, type Portfolio } from '@/lib/api';
 import {
   directionClass, formatCurrency, formatNumber, formatPercent, relativeTime,
 } from '@/lib/format';
-import { Disclaimer, Empty, ErrorBox, Loading, Panel, Stat } from '@/components/ui';
+import {
+  Disclaimer, Empty, ErrorBox, Loading, PageHeader, Panel, Stat, WarningLine,
+} from '@/components/ui';
+import { tooltipStyle, useChartTheme } from '@/hooks/useChartTheme';
 
 interface Trade {
   id: number; symbol: string; side: string; quantity: number; price: number;
@@ -30,6 +33,9 @@ interface Performance {
   };
 }
 
+const toneOf = (value: number): 'bull' | 'bear' | 'neutral' =>
+  value > 0 ? 'bull' : value < 0 ? 'bear' : 'neutral';
+
 export default function PortfolioPage() {
   const portfolio = useSWR<Portfolio>('/portfolio', fetcher, { refreshInterval: 30000 });
   const trades = useSWR<Page<Trade>>('/portfolio/trades?limit=40', fetcher);
@@ -38,6 +44,7 @@ export default function PortfolioPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   const pf = portfolio.data;
+  const chart = useChartTheme();
 
   async function runCycle() {
     setBusy(true);
@@ -61,99 +68,87 @@ export default function PortfolioPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight">
-            Portfolio {pf && <span className="text-2xs text-ink-faint">· {pf.mode}</span>}
-          </h1>
-          <p className="text-2xs text-ink-faint">
-            Paper trading uses the same signal and risk engines as live mode.
-          </p>
-        </div>
-        <button className="btn-primary" onClick={runCycle} disabled={busy}>
-          {busy ? 'Running…' : 'Run paper cycle'}
-        </button>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="Portfolio"
+        meta={pf && <span className="chip bg-ground-overlay text-ink-muted">{pf.mode}</span>}
+        description="Paper trading uses the same signal and risk engines as live mode."
+        actions={
+          <button className="btn-primary" onClick={runCycle} disabled={busy}>
+            {busy ? 'Running…' : 'Run paper cycle'}
+          </button>
+        }
+      />
 
-      {message && <div className="text-2xs text-ink-muted">{message}</div>}
+      {message && <p role="status" className="text-sm text-ink-muted">{message}</p>}
       {portfolio.error && <ErrorBox message={String(portfolio.error)} />}
       {portfolio.isLoading && <Panel><Loading /></Panel>}
 
       {pf && (
         <>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
-            <Panel bodyClassName="p-3">
-              <Stat label="Equity" value={formatCurrency(pf.equity, pf.currency, 0)} />
-            </Panel>
-            <Panel bodyClassName="p-3">
-              <Stat
-                label="Total P&L" value={formatCurrency(pf.total_pnl, pf.currency, 0)}
-                sub={formatPercent(pf.total_pnl_pct)}
-                tone={pf.total_pnl > 0 ? 'bull' : pf.total_pnl < 0 ? 'bear' : 'neutral'}
-              />
-            </Panel>
-            <Panel bodyClassName="p-3">
-              <Stat
-                label="Unrealised" value={formatCurrency(pf.unrealized_pnl, pf.currency, 0)}
-                tone={pf.unrealized_pnl > 0 ? 'bull' : pf.unrealized_pnl < 0 ? 'bear' : 'neutral'}
-              />
-            </Panel>
-            <Panel bodyClassName="p-3">
-              <Stat
-                label="Realised" value={formatCurrency(pf.realized_pnl, pf.currency, 0)}
-                tone={pf.realized_pnl > 0 ? 'bull' : pf.realized_pnl < 0 ? 'bear' : 'neutral'}
-              />
-            </Panel>
-            <Panel bodyClassName="p-3">
-              <Stat label="Cash" value={formatCurrency(pf.cash, pf.currency, 0)} />
-            </Panel>
-            <Panel bodyClassName="p-3">
-              <Stat
-                label="Exposure" value={formatPercent(pf.exposure_pct, 1).replace('+', '')}
-                sub={`drawdown ${formatPercent(pf.drawdown_pct, 1)}`}
-              />
-            </Panel>
-          </div>
+          <section
+            aria-label="Portfolio summary"
+            className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line lg:grid-cols-6"
+          >
+            {[
+              { label: 'Equity', value: formatCurrency(pf.equity, pf.currency, 0) },
+              {
+                label: 'Total P&L', value: formatCurrency(pf.total_pnl, pf.currency, 0),
+                sub: formatPercent(pf.total_pnl_pct), tone: toneOf(pf.total_pnl),
+              },
+              {
+                label: 'Unrealised', value: formatCurrency(pf.unrealized_pnl, pf.currency, 0),
+                tone: toneOf(pf.unrealized_pnl),
+              },
+              {
+                label: 'Realised', value: formatCurrency(pf.realized_pnl, pf.currency, 0),
+                tone: toneOf(pf.realized_pnl),
+              },
+              { label: 'Cash', value: formatCurrency(pf.cash, pf.currency, 0) },
+              {
+                label: 'Exposure', value: formatPercent(pf.exposure_pct, 1).replace('+', ''),
+                sub: `drawdown ${formatPercent(pf.drawdown_pct, 1)}`,
+              },
+            ].map((stat) => (
+              <div key={stat.label} className="min-w-0 bg-ground-raised px-4 py-3.5">
+                <Stat label={stat.label} value={stat.value} sub={stat.sub} tone={stat.tone} />
+              </div>
+            ))}
+          </section>
 
           {pf.warnings.length > 0 && (
-            <Panel title="Warnings">
-              <ul className="space-y-1">
-                {pf.warnings.map((warning) => (
-                  <li key={warning} className="text-sm text-warn">⚠ {warning}</li>
-                ))}
-              </ul>
-            </Panel>
+            <ul className="space-y-1 rounded-lg border border-warn/30 bg-warn-soft px-4 py-3 text-sm">
+              {pf.warnings.map((warning) => (
+                <WarningLine key={warning}>{warning}</WarningLine>
+              ))}
+            </ul>
           )}
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <Panel title="Equity curve (LIVE)" className="lg:col-span-2" bodyClassName="p-3">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+            <Panel title="Equity curve, live" className="lg:col-span-2" bodyClassName="p-4">
               {performance.data && performance.data.equity_curve.length > 1 ? (
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={performance.data.equity_curve}>
                       <defs>
                         <linearGradient id="equityFill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.35} />
-                          <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
+                          <stop offset="0%" stopColor={chart.accent} stopOpacity={0.28} />
+                          <stop offset="100%" stopColor={chart.accent} stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid stroke="#1f2937" vertical={false} />
-                      <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#5c6b7d' }} stroke="#1f2937" />
+                      <CartesianGrid stroke={chart.grid} vertical={false} />
+                      <XAxis
+                        dataKey="date" tick={{ fontSize: 11, fill: chart.tick }} stroke={chart.axis}
+                        tickLine={false} minTickGap={32}
+                      />
                       <YAxis
-                        tick={{ fontSize: 10, fill: '#5c6b7d' }} stroke="#1f2937"
+                        tick={{ fontSize: 11, fill: chart.tick }} stroke={chart.axis} axisLine={false} tickLine={false}
                         domain={['auto', 'auto']} width={70}
-                        tickFormatter={(v) => Intl.NumberFormat(undefined, { notation: 'compact' }).format(v)}
+                        tickFormatter={(v) => Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 2 }).format(v)}
                       />
-                      <Tooltip
-                        contentStyle={{
-                          background: '#121821', border: '1px solid #1f2937',
-                          borderRadius: 6, fontSize: 12,
-                        }}
-                        labelStyle={{ color: '#8b98a9' }}
-                      />
+                      <Tooltip {...tooltipStyle(chart)} />
                       <Area
-                        type="monotone" dataKey="equity" stroke="#3b82f6"
+                        type="monotone" dataKey="equity" stroke={chart.accent}
                         strokeWidth={1.5} fill="url(#equityFill)"
                       />
                     </AreaChart>
@@ -165,9 +160,9 @@ export default function PortfolioPage() {
                   hint="A daily snapshot is recorded by the scheduler; the curve appears once there are at least two."
                 />
               )}
-              <p className="mt-2 text-2xs text-ink-faint">
-                LIVE performance from recorded portfolio snapshots — distinct from
-                backtest results.
+              <p className="mt-2 text-xs text-ink-faint">
+                Live performance from recorded portfolio snapshots. This is separate
+                from backtest results.
               </p>
             </Panel>
 
@@ -175,7 +170,7 @@ export default function PortfolioPage() {
               {Object.keys(pf.sector_allocation).length === 0 && (
                 <Empty message="No open positions" />
               )}
-              <ul className="space-y-2">
+              <ul className="space-y-3">
                 {Object.entries(pf.sector_allocation).map(([sector, weight]) => (
                   <li key={sector}>
                     <div className="flex items-baseline justify-between text-sm">
@@ -184,9 +179,9 @@ export default function PortfolioPage() {
                         {(weight * 100).toFixed(1)}%
                       </span>
                     </div>
-                    <div className="mt-1 h-1.5 rounded-full bg-ground-overlay overflow-hidden">
+                    <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-ground-overlay">
                       <div
-                        className={`h-full ${weight > 0.3 ? 'bg-warn' : 'bg-accent'}`}
+                        className={`h-full rounded-full ${weight > 0.3 ? 'bg-warn' : 'bg-accent'}`}
                         style={{ width: `${Math.min(weight * 100, 100)}%` }}
                       />
                     </div>
@@ -194,10 +189,12 @@ export default function PortfolioPage() {
                 ))}
               </ul>
               {performance.data?.correlation?.average_absolute_correlation !== undefined && (
-                <p className="mt-3 text-2xs text-ink-faint">
+                <p className="mt-4 border-t border-line pt-3 text-xs leading-relaxed text-ink-faint">
                   Average absolute correlation{' '}
-                  {performance.data.correlation.average_absolute_correlation.toFixed(2)} —{' '}
-                  {performance.data.correlation.diversification_note}
+                  <span className="font-mono tabular-nums text-ink-muted">
+                    {performance.data.correlation.average_absolute_correlation.toFixed(2)}
+                  </span>
+                  : {performance.data.correlation.diversification_note}
                 </p>
               )}
             </Panel>
@@ -231,11 +228,11 @@ export default function PortfolioPage() {
                             {position.symbol}
                           </Link>
                           {position.price_is_stale && (
-                            <span className="ml-1 text-2xs text-bear">STALE</span>
+                            <span className="chip ml-1.5 bg-bear-soft text-bear">STALE</span>
                           )}
                           {!position.counted_in_totals && (
                             <span
-                              className="ml-1 text-2xs text-bear"
+                              className="chip ml-1.5 bg-bear-soft text-bear"
                               title={`Priced in ${position.currency || 'an unknown currency'}; not included in the portfolio totals because no FX rate is available.`}
                             >
                               NOT IN TOTAL
@@ -262,7 +259,7 @@ export default function PortfolioPage() {
                         <td className="text-right font-mono tabular-nums text-bull">
                           {formatNumber(position.take_profit)}
                         </td>
-                        <td className="text-2xs text-ink-faint">{relativeTime(position.opened_at)}</td>
+                        <td className="text-xs text-ink-faint">{relativeTime(position.opened_at)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -292,7 +289,7 @@ export default function PortfolioPage() {
                   <tbody>
                     {trades.data.items.map((trade) => (
                       <tr key={trade.id}>
-                        <td className="text-2xs text-ink-faint">{relativeTime(trade.executed_at)}</td>
+                        <td className="text-xs text-ink-faint">{relativeTime(trade.executed_at)}</td>
                         <td className="font-medium">{trade.symbol}</td>
                         <td>
                           <span className={`chip ${trade.side === 'BUY' ? 'bg-bull-soft text-bull' : 'bg-bear-soft text-bear'}`}>
@@ -313,8 +310,8 @@ export default function PortfolioPage() {
                         <td className={`text-right font-mono tabular-nums ${directionClass(trade.realized_pnl)}`}>
                           {trade.realized_pnl === null ? '--' : formatNumber(trade.realized_pnl, 2)}
                         </td>
-                        <td className="text-2xs text-ink-muted">{trade.exit_reason ?? '--'}</td>
-                        <td className="text-2xs text-ink-faint">{trade.mode}</td>
+                        <td className="text-xs text-ink-muted">{trade.exit_reason ?? '--'}</td>
+                        <td className="text-xs text-ink-faint">{trade.mode}</td>
                       </tr>
                     ))}
                   </tbody>

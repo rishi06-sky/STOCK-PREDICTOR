@@ -1,26 +1,35 @@
 import type { Config } from 'tailwindcss';
 
 /**
- * Terminal-inspired palette: a dark ground with restrained accents, so the
- * colour that does appear (a signal, a P&L figure) carries meaning.
+ * Instrument-panel palette: graphite neutrals with one accent, so the colour
+ * that does appear (a signal, a P&L figure, a warning) carries meaning.
+ *
+ * Every colour is a CSS variable holding RGB channels (see globals.css), so
+ * the light and dark themes swap in one place and Tailwind's `/alpha`
+ * modifiers keep working.
+ *
+ * Shape rule, applied everywhere: surfaces `rounded-lg`, controls
+ * `rounded-md`, chips `rounded`.
  */
+const token = (name: string) => `rgb(var(--${name}) / <alpha-value>)`;
+
 const config: Config = {
   content: ['./src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        ground: { DEFAULT: '#0b0f14', raised: '#121821', overlay: '#1a222d' },
-        line: { DEFAULT: '#1f2937', bright: '#2d3a4d' },
-        ink: { DEFAULT: '#e6edf3', muted: '#8b98a9', faint: '#5c6b7d' },
-        bull: { DEFAULT: '#26a96c', soft: '#15352a' },
-        bear: { DEFAULT: '#e5484d', soft: '#3b1a1d' },
-        flat: { DEFAULT: '#8b98a9', soft: '#1a222d' },
-        accent: { DEFAULT: '#3b82f6', soft: '#132338' },
-        warn: { DEFAULT: '#d29922', soft: '#332711' },
+        ground: { DEFAULT: token('ground'), raised: token('ground-raised'), overlay: token('ground-overlay') },
+        line: { DEFAULT: token('line'), bright: token('line-bright') },
+        ink: { DEFAULT: token('ink'), muted: token('ink-muted'), faint: token('ink-faint') },
+        bull: { DEFAULT: token('bull'), soft: token('bull-soft') },
+        bear: { DEFAULT: token('bear'), soft: token('bear-soft') },
+        flat: { DEFAULT: token('ink-muted'), soft: token('ground-overlay') },
+        accent: { DEFAULT: token('accent'), soft: token('accent-soft'), ink: token('accent-ink') },
+        warn: { DEFAULT: token('warn'), soft: token('warn-soft') },
       },
       fontFamily: {
-        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
-        sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        sans: ['var(--font-geist-sans)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        mono: ['var(--font-geist-mono)', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       fontSize: { '2xs': ['0.6875rem', { lineHeight: '1rem' }] },
     },

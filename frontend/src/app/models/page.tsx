@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import useSWR from 'swr';
 import { fetcher } from '@/lib/api';
-import { formatDateTime, relativeTime } from '@/lib/format';
-import { Empty, Loading, Panel } from '@/components/ui';
+import { formatDateTime, humanize, relativeTime } from '@/lib/format';
+import { Empty, Loading, PageHeader, Panel } from '@/components/ui';
 
 interface ModelVersion {
   id: number; name: string; version: string; algorithm: string; target: string;
@@ -37,7 +37,7 @@ const STATUS_STYLES: Record<string, string> = {
 /** Metrics worth surfacing, with why each one matters. */
 const KEY_METRICS: [string, string][] = [
   ['roc_auc', 'Ranking quality; 0.5 is a coin flip'],
-  ['accuracy', 'Raw hit rate — read it against the baseline'],
+  ['accuracy', 'Raw hit rate; read it against the baseline'],
   ['baseline_accuracy', 'Always predicting the majority class'],
   ['lift_over_baseline', 'Accuracy minus baseline; this is the real edge'],
   ['brier', 'Probability error, lower is better'],
@@ -55,14 +55,11 @@ export default function ModelsPage() {
   const drift = useSWR<Drift>(selected ? `/models/${selected}/drift` : null, fetcher);
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-lg font-semibold tracking-tight">Model monitoring</h1>
-        <p className="text-2xs text-ink-faint">
-          Validation metrics measured out-of-sample during training — not live
-          trading results.
-        </p>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="Model monitoring"
+        description="Validation metrics measured out-of-sample during training. These are not live trading results."
+      />
 
       {models.isLoading && <Panel><Loading /></Panel>}
       {models.data?.length === 0 && (
@@ -100,14 +97,15 @@ export default function ModelsPage() {
                     <td className="text-right font-mono tabular-nums">
                       {model.training_rows?.toLocaleString() ?? '--'}
                     </td>
-                    <td className="font-mono text-2xs text-ink-muted">{model.feature_set_version}</td>
-                    <td className="text-2xs text-ink-faint">{relativeTime(model.trained_at)}</td>
-                    <td className="text-2xs text-ink-faint">
+                    <td className="font-mono text-xs text-ink-muted">{model.feature_set_version}</td>
+                    <td className="text-xs text-ink-faint">{relativeTime(model.trained_at)}</td>
+                    <td className="text-xs text-ink-faint">
                       {model.promoted_at ? relativeTime(model.promoted_at) : '--'}
                     </td>
                     <td>
                       <button
-                        className="text-2xs text-accent hover:underline"
+                        className="link"
+                        aria-expanded={selected === model.id}
                         onClick={() => setSelected(model.id === selected ? null : model.id)}
                       >
                         {selected === model.id ? 'Hide' : 'Inspect'}
@@ -122,14 +120,14 @@ export default function ModelsPage() {
       )}
 
       {selected && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           <Panel title="Validation metrics">
             {detail.isLoading && <Loading />}
             {detail.data && (
               <>
                 {Object.entries(detail.data.metrics).map(([split, values]) => (
-                  <div key={split} className="mb-4 last:mb-0">
-                    <h3 className="stat-label mb-2">
+                  <div key={split} className="mb-6 last:mb-0">
+                    <h3 className="mb-1 text-xs font-medium text-ink-muted">
                       {split === 'cv_mean'
                         ? 'Walk-forward cross-validation (mean)'
                         : split === 'holdout'
@@ -141,11 +139,11 @@ export default function ModelsPage() {
                         {KEY_METRICS.filter(([key]) => values[key] !== undefined).map(
                           ([key, description]) => (
                             <tr key={key}>
-                              <td className="text-ink-muted">
-                                {key.replace(/_/g, ' ')}
-                                <div className="text-2xs text-ink-faint">{description}</div>
+                              <td className="whitespace-normal pl-0">
+                                {humanize(key)}
+                                <div className="text-xs text-ink-faint">{description}</div>
                               </td>
-                              <td className="text-right font-mono tabular-nums">
+                              <td className="pr-0 text-right font-mono tabular-nums">
                                 {key === 'sample_size'
                                   ? values[key].toLocaleString()
                                   : values[key].toFixed(4)}
@@ -157,9 +155,9 @@ export default function ModelsPage() {
                     </table>
                   </div>
                 ))}
-                <p className="mt-3 text-2xs text-ink-faint">{detail.data.disclaimer}</p>
+                <p className="mt-4 text-xs leading-relaxed text-ink-faint">{detail.data.disclaimer}</p>
                 {detail.data.artifact_sha256 && (
-                  <p className="mt-1 font-mono text-2xs text-ink-faint">
+                  <p className="mt-1 font-mono text-xs text-ink-faint">
                     artefact sha256 {detail.data.artifact_sha256.slice(0, 16)}…
                   </p>
                 )}
@@ -178,18 +176,20 @@ export default function ModelsPage() {
                   >
                     {drift.data.drift_detected ? 'DRIFT DETECTED' : 'STABLE'}
                   </span>
-                  <span className="text-2xs text-ink-faint">
-                    max PSI {drift.data.max_psi?.toFixed(3)} (&gt;0.25 is a significant shift)
+                  <span className="text-xs text-ink-faint">
+                    Max PSI{' '}
+                    <span className="font-mono tabular-nums text-ink-muted">{drift.data.max_psi?.toFixed(3)}</span>
+                    . Above 0.25 is a significant shift.
                   </span>
                 </div>
                 <table className="data-table">
                   <thead>
-                    <tr><th>Feature</th><th className="text-right">PSI</th></tr>
+                    <tr><th className="pl-0">Feature</th><th className="text-right">PSI</th></tr>
                   </thead>
                   <tbody>
                     {Object.entries(drift.data.feature_psi ?? {}).slice(0, 12).map(([feature, psi]) => (
                       <tr key={feature}>
-                        <td className="font-mono text-2xs">{feature}</td>
+                        <td className="pl-0 font-mono text-xs">{feature}</td>
                         <td
                           className={`text-right font-mono tabular-nums ${
                             psi > 0.25 ? 'text-warn' : 'text-ink-muted'

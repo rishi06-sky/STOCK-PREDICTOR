@@ -6,10 +6,10 @@ import {
   fetcher, type Alert, type Health, type MarketStatus, type Page,
   type Portfolio, type Quote, type Signal,
 } from '@/lib/api';
-import { directionClass, formatCurrency, formatNumber, formatPercent, relativeTime } from '@/lib/format';
+import { directionClass, formatCurrency, formatNumber, formatPercent, humanize, relativeTime } from '@/lib/format';
 import {
   Confidence, Disclaimer, Empty, Loading, Panel, QualityBadge, RiskBadge,
-  SignalBadge, Stat, StatusDot,
+  SignalBadge, Stat, StatusDot, WarningLine,
 } from '@/components/ui';
 import { useLiveUpdates } from '@/hooks/useLiveUpdates';
 
@@ -36,44 +36,50 @@ export default function DashboardPage() {
   const pf = portfolio.data;
 
   return (
-    <div className="space-y-4">
-      {/* ---------------------------------------------------- market strip */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {indices.data?.map((index) => (
-          <Panel key={index.security_id} bodyClassName="p-3">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="stat-label">{index.symbol}</div>
-                <div className="stat-value text-lg mt-0.5">{formatNumber(index.price)}</div>
-              </div>
-              <div className={`text-sm font-mono tabular-nums ${directionClass(index.change_pct)}`}>
-                {formatPercent(index.change_pct, 2, { alreadyPercent: true })}
-              </div>
-            </div>
-            <div className="mt-2">
-              <QualityBadge quality={index.quality} asOf={index.source_timestamp} stale={index.is_stale} />
-            </div>
-          </Panel>
-        ))}
-        {!indices.data && <Panel className="sm:col-span-2 lg:col-span-4"><Loading label="Loading indices" /></Panel>}
-        {indices.data?.length === 0 && (
-          <Panel className="sm:col-span-2 lg:col-span-4">
-            <Empty
-              message="No index data yet"
-              hint="Run the ingestion pipeline to populate benchmark history."
-            />
-          </Panel>
-        )}
-      </div>
+    <>
+    <h1 className="sr-only">Dashboard</h1>
+    <div className="space-y-5">
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      {/* ---------------------------------------------------- market strip */}
+      {!indices.data && <Panel bodyClassName="p-0"><Loading label="Loading indices" rows={2} /></Panel>}
+      {indices.data?.length === 0 && (
+        <Panel>
+          <Empty
+            message="No index data yet"
+            hint="Run the ingestion pipeline to populate benchmark history."
+          />
+        </Panel>
+      )}
+      {!!indices.data?.length && (
+        <section
+          aria-label="Benchmark indices"
+          className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-2 lg:grid-cols-4"
+        >
+          {indices.data.map((index) => (
+            <div key={index.security_id} className="min-w-0 bg-ground-raised px-4 py-3.5">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="truncate text-xs text-ink-muted">{index.symbol}</span>
+                <span className={`font-mono text-xs tabular-nums ${directionClass(index.change_pct)}`}>
+                  {formatPercent(index.change_pct, 2, { alreadyPercent: true })}
+                </span>
+              </div>
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+                <span className="stat-value text-xl">{formatNumber(index.price)}</span>
+                <QualityBadge quality={index.quality} asOf={index.source_timestamp} stale={index.is_stale} />
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         {/* ------------------------------------------------ opportunities */}
         <Panel
-          className="lg:col-span-2"
+          className="flex flex-col lg:col-span-2"
           title="Top opportunities"
-          bodyClassName="p-0"
+          bodyClassName="flex flex-1 flex-col p-0"
           actions={
-            <Link href="/opportunities" className="text-2xs text-accent hover:underline">
+            <Link href="/opportunities" className="link">
               View all
             </Link>
           }
@@ -110,7 +116,7 @@ export default function DashboardPage() {
                         >
                           {signal.symbol}
                         </Link>
-                        <div className="text-2xs text-ink-faint">{signal.exchange}</div>
+                        <div className="text-xs text-ink-faint">{signal.exchange}</div>
                       </td>
                       <td><SignalBadge signal={signal.signal} /></td>
                       <td><Confidence value={signal.confidence} /></td>
@@ -131,15 +137,15 @@ export default function DashboardPage() {
               </table>
             </div>
           )}
-          <div className="px-4 py-3 border-t border-line"><Disclaimer /></div>
+          <div className="mt-auto border-t border-line px-4 py-3"><Disclaimer /></div>
         </Panel>
 
         {/* ---------------------------------------------------- portfolio */}
-        <div className="space-y-4">
+        <div className="space-y-5">
           <Panel
             title="Paper portfolio"
             actions={
-              <Link href="/portfolio" className="text-2xs text-accent hover:underline">
+              <Link href="/portfolio" className="link">
                 Details
               </Link>
             }
@@ -147,14 +153,16 @@ export default function DashboardPage() {
             {portfolio.isLoading && <Loading />}
             {pf && (
               <>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-5">
                   <Stat
                     label="Equity"
+                    size="lg"
                     value={formatCurrency(pf.equity, pf.currency, 0)}
                     sub={`${pf.open_positions} open position${pf.open_positions === 1 ? '' : 's'}`}
                   />
                   <Stat
                     label="Total P&L"
+                    size="lg"
                     value={formatCurrency(pf.total_pnl, pf.currency, 0)}
                     sub={formatPercent(pf.total_pnl_pct)}
                     tone={pf.total_pnl > 0 ? 'bull' : pf.total_pnl < 0 ? 'bear' : 'neutral'}
@@ -167,9 +175,9 @@ export default function DashboardPage() {
                   />
                 </div>
                 {pf.warnings.length > 0 && (
-                  <ul className="mt-3 space-y-1">
+                  <ul className="mt-4 space-y-1 border-t border-line pt-3 text-xs">
                     {pf.warnings.slice(0, 3).map((warning) => (
-                      <li key={warning} className="text-2xs text-warn">⚠ {warning}</li>
+                      <WarningLine key={warning}>{warning}</WarningLine>
                     ))}
                   </ul>
                 )}
@@ -181,22 +189,22 @@ export default function DashboardPage() {
             {health.data && (
               <ul className="divide-y divide-line/60">
                 {health.data.components.map((component) => (
-                  <li key={component.component} className="flex items-center gap-2 px-4 py-2">
+                  <li key={component.component} className="flex items-center gap-2.5 px-4 py-2.5">
                     <StatusDot status={component.status} />
-                    <span className="text-sm">{component.component.replace(/_/g, ' ')}</span>
-                    <span className="ml-auto truncate text-2xs text-ink-faint max-w-[55%] text-right">
+                    <span className="text-sm">{humanize(component.component)}</span>
+                    <span className="ml-auto max-w-[55%] truncate text-right text-xs text-ink-faint">
                       {component.detail}
                     </span>
                   </li>
                 ))}
               </ul>
             )}
-            {!health.data && <Loading />}
+            {!health.data && <Loading rows={5} />}
           </Panel>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         {/* -------------------------------------------------------- movers */}
         <Panel title="Market movers" bodyClassName="p-0" className="lg:col-span-2">
           {!movers.data && <Loading />}
@@ -223,7 +231,7 @@ export default function DashboardPage() {
                         >
                           {quote.symbol}
                         </Link>
-                        <div className="text-2xs text-ink-faint">{quote.exchange}</div>
+                        <div className="text-xs text-ink-faint">{quote.exchange}</div>
                       </td>
                       <td className="text-right font-mono tabular-nums">
                         {formatCurrency(quote.price, quote.currency)}
@@ -253,7 +261,7 @@ export default function DashboardPage() {
         <Panel
           title="Recent alerts"
           bodyClassName="p-0"
-          actions={<Link href="/alerts" className="text-2xs text-accent hover:underline">View all</Link>}
+          actions={<Link href="/alerts" className="link">View all</Link>}
         >
           {!alerts.data && <Loading />}
           {alerts.data?.items.length === 0 && <Empty message="No alerts yet" />}
@@ -262,14 +270,16 @@ export default function DashboardPage() {
               <li key={alert.id} className="px-4 py-2.5">
                 <div className="flex items-start gap-2">
                   <span
-                    className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${
+                    role="img"
+                    aria-label={alert.severity.toLowerCase()}
+                    className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${
                       alert.severity === 'CRITICAL' ? 'bg-bear'
                         : alert.severity === 'WARNING' ? 'bg-warn' : 'bg-accent'
                     }`}
                   />
                   <div className="min-w-0">
                     <p className="truncate text-sm">{alert.title}</p>
-                    <p className="text-2xs text-ink-faint">{relativeTime(alert.created_at)}</p>
+                    <p className="mt-0.5 text-xs text-ink-faint">{relativeTime(alert.created_at)}</p>
                   </div>
                 </div>
               </li>
@@ -297,7 +307,7 @@ export default function DashboardPage() {
                     <span className={`chip ${market.is_open ? 'bg-bull-soft text-bull' : 'bg-ground-overlay text-ink-muted'}`}>
                       {market.is_open ? 'OPEN' : 'CLOSED'}
                     </span>
-                    <span className="ml-2 text-2xs text-ink-faint">{market.reason}</span>
+                    <span className="ml-2 text-xs text-ink-faint">{market.reason}</span>
                   </td>
                   <td className="font-mono tabular-nums text-ink-muted">
                     {new Date(market.local_time).toLocaleTimeString()}
@@ -312,5 +322,6 @@ export default function DashboardPage() {
         </div>
       </Panel>
     </div>
+    </>
   );
 }

@@ -3,14 +3,35 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import useSWR from 'swr';
+import { CaretDown } from '@phosphor-icons/react/ssr';
 import { fetcher, type Page, type Signal } from '@/lib/api';
 import { directionClass, formatCurrency, formatNumber, formatPercent, relativeTime } from '@/lib/format';
 import {
-  Confidence, Disclaimer, Empty, ErrorBox, Loading, Panel, QualityBadge,
+  Confidence, Disclaimer, Empty, ErrorBox, Loading, PageHeader, Panel, QualityBadge,
   RiskBadge, SignalBadge,
 } from '@/components/ui';
 
 type SortKey = 'opportunity_score' | 'confidence' | 'expected_return' | 'symbol';
+
+function SortButton({
+  active, onClick, children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex items-center gap-1 transition-colors hover:text-ink ${active ? 'text-ink' : ''}`}
+    >
+      {children}
+      <CaretDown size={10} weight="bold" aria-hidden className={active ? 'opacity-100' : 'opacity-0'} />
+    </button>
+  );
+}
 
 export default function OpportunitiesPage() {
   const [direction, setDirection] = useState<'all' | 'long' | 'short'>('all');
@@ -46,32 +67,26 @@ export default function OpportunitiesPage() {
   }, [data, query, sortKey]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-baseline justify-between gap-4">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight">Opportunities</h1>
-          <p className="text-2xs text-ink-faint">
-            Active signals ranked by risk-adjusted opportunity score.
-          </p>
-        </div>
-        <span className="text-2xs text-ink-faint">
-          {data ? `${rows.length} of ${data.total}` : ''}
-        </span>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="Opportunities"
+        description="Active signals ranked by risk-adjusted opportunity score."
+        meta={data ? `${rows.length} of ${data.total}` : undefined}
+      />
 
-      <Panel bodyClassName="p-3">
+      <Panel bodyClassName="p-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <div>
             <label className="stat-label" htmlFor="search">Search</label>
             <input
-              id="search" className="input mt-1" placeholder="symbol, name or sector"
+              id="search" className="input mt-1.5" placeholder="symbol, name or sector"
               value={query} onChange={(e) => setQuery(e.target.value)}
             />
           </div>
           <div>
             <label className="stat-label" htmlFor="direction">Direction</label>
             <select
-              id="direction" className="input mt-1" value={direction}
+              id="direction" className="input mt-1.5" value={direction}
               onChange={(e) => setDirection(e.target.value as typeof direction)}
             >
               <option value="all">All</option>
@@ -81,7 +96,7 @@ export default function OpportunitiesPage() {
           </div>
           <div>
             <label className="stat-label" htmlFor="risk">Risk</label>
-            <select id="risk" className="input mt-1" value={risk} onChange={(e) => setRisk(e.target.value)}>
+            <select id="risk" className="input mt-1.5" value={risk} onChange={(e) => setRisk(e.target.value)}>
               <option value="">Any</option>
               <option value="LOW">Low</option>
               <option value="MODERATE">Moderate</option>
@@ -92,7 +107,7 @@ export default function OpportunitiesPage() {
           <div>
             <label className="stat-label" htmlFor="exchange">Exchange</label>
             <select
-              id="exchange" className="input mt-1" value={exchange}
+              id="exchange" className="input mt-1.5" value={exchange}
               onChange={(e) => setExchange(e.target.value)}
             >
               <option value="">All</option>
@@ -102,11 +117,12 @@ export default function OpportunitiesPage() {
           </div>
           <div>
             <label className="stat-label" htmlFor="confidence">
-              Min confidence: {(minConfidence * 100).toFixed(0)}%
+              Min confidence{' '}
+              <span className="font-mono tabular-nums text-ink">{(minConfidence * 100).toFixed(0)}%</span>
             </label>
             <input
               id="confidence" type="range" min={0} max={0.95} step={0.05}
-              value={minConfidence} className="mt-3 w-full accent-accent"
+              value={minConfidence} className="mt-4 w-full accent-accent"
               onChange={(e) => setMinConfidence(Number(e.target.value))}
             />
           </div>
@@ -129,14 +145,14 @@ export default function OpportunitiesPage() {
                 <tr>
                   <th>#</th>
                   <th>
-                    <button onClick={() => setSortKey('symbol')} className="hover:text-ink">Symbol</button>
+                    <SortButton active={sortKey === 'symbol'} onClick={() => setSortKey('symbol')}>Symbol</SortButton>
                   </th>
                   <th>Signal</th>
                   <th>
-                    <button onClick={() => setSortKey('confidence')} className="hover:text-ink">Confidence</button>
+                    <SortButton active={sortKey === 'confidence'} onClick={() => setSortKey('confidence')}>Confidence</SortButton>
                   </th>
                   <th>
-                    <button onClick={() => setSortKey('opportunity_score')} className="hover:text-ink">Score</button>
+                    <SortButton active={sortKey === 'opportunity_score'} onClick={() => setSortKey('opportunity_score')}>Score</SortButton>
                   </th>
                   <th className="text-right">Price</th>
                   <th className="text-right">Entry zone</th>
@@ -144,7 +160,7 @@ export default function OpportunitiesPage() {
                   <th className="text-right">Target</th>
                   <th className="text-right">R:R</th>
                   <th>
-                    <button onClick={() => setSortKey('expected_return')} className="hover:text-ink">Exp. return</button>
+                    <SortButton active={sortKey === 'expected_return'} onClick={() => setSortKey('expected_return')}>Exp. return</SortButton>
                   </th>
                   <th>Risk</th>
                   <th>Horizon</th>
@@ -160,7 +176,7 @@ export default function OpportunitiesPage() {
                       <Link href={`/stock/${signal.symbol}`} className="font-medium hover:text-accent">
                         {signal.symbol}
                       </Link>
-                      <div className="text-2xs text-ink-faint">{signal.sector ?? signal.exchange}</div>
+                      <div className="text-xs text-ink-faint">{signal.sector ?? signal.exchange}</div>
                     </td>
                     <td><SignalBadge signal={signal.signal} /></td>
                     <td><Confidence value={signal.confidence} /></td>
@@ -172,7 +188,7 @@ export default function OpportunitiesPage() {
                     </td>
                     <td className="text-right font-mono tabular-nums text-ink-muted">
                       {signal.entry_low && signal.entry_high
-                        ? `${formatNumber(signal.entry_low)}–${formatNumber(signal.entry_high)}`
+                        ? `${formatNumber(signal.entry_low)} to ${formatNumber(signal.entry_high)}`
                         : '--'}
                     </td>
                     <td className="text-right font-mono tabular-nums text-bear">
@@ -190,7 +206,7 @@ export default function OpportunitiesPage() {
                     <td><RiskBadge level={signal.risk_level} /></td>
                     <td className="font-mono tabular-nums text-ink-muted">{signal.horizon_days}d</td>
                     <td><QualityBadge quality={signal.data_quality} stale={false} /></td>
-                    <td className="text-2xs text-ink-faint">{relativeTime(signal.generated_at)}</td>
+                    <td className="text-xs text-ink-faint">{relativeTime(signal.generated_at)}</td>
                   </tr>
                 ))}
               </tbody>

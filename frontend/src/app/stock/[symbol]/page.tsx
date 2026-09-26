@@ -8,11 +8,12 @@ import {
   Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { fetcher, type DataQuality, type Rationale, type SignalKind } from '@/lib/api';
-import { directionClass, formatCompact, formatCurrency, formatDateTime, formatNumber, formatPercent, relativeTime } from '@/lib/format';
+import { directionClass, formatCompact, formatCurrency, formatDateTime, formatNumber, formatPercent, humanize, relativeTime } from '@/lib/format';
 import {
-  Confidence, Disclaimer, Empty, ErrorBox, Loading, Panel, QualityBadge,
+  Confidence, DirectionIcon, Disclaimer, Empty, ErrorBox, Loading, Panel, QualityBadge,
   RiskBadge, SignalBadge, Stat,
 } from '@/components/ui';
+import { tooltipStyle, useChartTheme } from '@/hooks/useChartTheme';
 
 interface Analysis {
   security: {
@@ -65,9 +66,13 @@ const RANGES = [
   { label: '2Y', days: 730 },
 ];
 
-const CONTRIBUTION_STYLE: Record<string, string> = {
-  bullish: 'text-bull', bearish: 'text-bear', neutral: 'text-ink-muted',
-};
+const CONTRIBUTION_DIRECTION = {
+  bullish: 'up', bearish: 'down', neutral: 'neutral',
+} as const;
+
+const SENTIMENT_DIRECTION = {
+  POSITIVE: 'up', NEGATIVE: 'down',
+} as const;
 
 export default function StockPage() {
   const params = useParams<{ symbol: string }>();
@@ -75,6 +80,7 @@ export default function StockPage() {
   const [range, setRange] = useState(180);
   const [showSMA, setShowSMA] = useState(true);
   const [showVolume, setShowVolume] = useState(true);
+  const chart = useChartTheme();
 
   const analysis = useSWR<Analysis>(`/securities/${symbol}/analysis`, fetcher, {
     refreshInterval: 60000,
@@ -103,18 +109,25 @@ export default function StockPage() {
   if (analysis.error) {
     return <ErrorBox message={`Could not load ${symbol}: ${analysis.error}`} />;
   }
-  if (analysis.isLoading || !analysis.data) return <Loading label={`Loading ${symbol}`} />;
+  if (analysis.isLoading || !analysis.data) {
+    return (
+      <div className="space-y-5">
+        <Panel><Loading label={`Loading ${symbol}`} rows={2} /></Panel>
+        <div className="skeleton h-80 w-full rounded-lg" />
+      </div>
+    );
+  }
 
   const { security, quote, technical, signal, fundamentals, sentiment, news } = analysis.data;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* ------------------------------------------------------------ header */}
-      <Panel bodyClassName="p-4">
+      <Panel bodyClassName="p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-semibold tracking-tight">{security.symbol}</h1>
+              <h1 className="mr-1 text-2xl font-semibold tracking-tight">{security.symbol}</h1>
               <span className="chip bg-ground-overlay text-ink-muted">{security.exchange}</span>
               {security.sector && (
                 <span className="chip bg-ground-overlay text-ink-muted">{security.sector}</span>
@@ -127,22 +140,22 @@ export default function StockPage() {
                 {analysis.data.market_open ? 'MARKET OPEN' : 'MARKET CLOSED'}
               </span>
             </div>
-            <p className="mt-1 text-sm text-ink-muted">{security.name}</p>
+            <p className="mt-1.5 text-sm text-ink-muted">{security.name}</p>
             {security.industry && (
-              <p className="text-2xs text-ink-faint">{security.industry}</p>
+              <p className="mt-0.5 text-xs text-ink-faint">{security.industry}</p>
             )}
           </div>
 
           {quote && (
             <div className="text-right">
-              <div className="font-mono text-3xl tabular-nums">{formatCurrency(quote.price, security.currency)}</div>
+              <div className="font-mono text-3xl tabular-nums tracking-tight">{formatCurrency(quote.price, security.currency)}</div>
               <div className={`font-mono text-sm tabular-nums ${directionClass(quote.change_pct)}`}>
                 {formatNumber(quote.change)} ({formatPercent(quote.change_pct, 2, { alreadyPercent: true })})
               </div>
-              <div className="mt-1.5 flex justify-end">
+              <div className="mt-2 flex items-center justify-end gap-2">
+                <span className="text-xs text-ink-faint">via {quote.provider}</span>
                 <QualityBadge quality={quote.quality} asOf={quote.source_timestamp} />
               </div>
-              <div className="mt-1 text-2xs text-ink-faint">via {quote.provider}</div>
             </div>
           )}
         </div>
@@ -151,27 +164,29 @@ export default function StockPage() {
       {/* ------------------------------------------------------------- chart */}
       <Panel
         title="Price history"
-        bodyClassName="p-3"
+        bodyClassName="p-4"
         actions={
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-1 text-2xs text-ink-muted">
-              <input type="checkbox" className="accent-accent" checked={showSMA}
+          <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-ink-muted">
+              <input type="checkbox" className="h-3.5 w-3.5 accent-accent" checked={showSMA}
                 onChange={(e) => setShowSMA(e.target.checked)} />
               SMA
             </label>
-            <label className="flex items-center gap-1 text-2xs text-ink-muted">
-              <input type="checkbox" className="accent-accent" checked={showVolume}
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-ink-muted">
+              <input type="checkbox" className="h-3.5 w-3.5 accent-accent" checked={showVolume}
                 onChange={(e) => setShowVolume(e.target.checked)} />
               Volume
             </label>
-            <div className="flex gap-1">
+            <div role="group" aria-label="Range" className="flex rounded-md border border-line p-0.5">
               {RANGES.map((option) => (
                 <button
                   key={option.label}
+                  type="button"
+                  aria-pressed={range === option.days}
                   onClick={() => setRange(option.days)}
-                  className={`rounded px-1.5 py-0.5 text-2xs ${
+                  className={`rounded px-2 py-0.5 font-mono text-xs transition-colors ${
                     range === option.days
-                      ? 'bg-accent text-white'
+                      ? 'bg-ground-overlay text-ink'
                       : 'text-ink-muted hover:text-ink'
                   }`}
                 >
@@ -182,7 +197,7 @@ export default function StockPage() {
           </div>
         }
       >
-        {history.isLoading && <Loading />}
+        {history.isLoading && <div className="skeleton h-80 w-full" />}
         {chartData.length === 0 && !history.isLoading && (
           <Empty message="No price history stored for this security" />
         )}
@@ -190,50 +205,49 @@ export default function StockPage() {
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData}>
-                <CartesianGrid stroke="#1f2937" vertical={false} />
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#5c6b7d' }} stroke="#1f2937" minTickGap={40} />
+                <CartesianGrid stroke={chart.grid} vertical={false} />
+                <XAxis
+                  dataKey="date" tick={{ fontSize: 11, fill: chart.tick }} stroke={chart.axis}
+                  tickLine={false} minTickGap={48}
+                />
                 <YAxis
                   yAxisId="price" domain={['auto', 'auto']} width={68}
-                  tick={{ fontSize: 10, fill: '#5c6b7d' }} stroke="#1f2937"
+                  tick={{ fontSize: 11, fill: chart.tick }} axisLine={false} tickLine={false}
                 />
                 {showVolume && (
                   <YAxis
                     yAxisId="volume" orientation="right" width={48} domain={[0, (max: number) => max * 4]}
-                    tick={{ fontSize: 10, fill: '#5c6b7d' }} stroke="#1f2937"
+                    tick={{ fontSize: 11, fill: chart.tick }} axisLine={false} tickLine={false}
                     tickFormatter={(v) => formatCompact(v)}
                   />
                 )}
                 <Tooltip
-                  contentStyle={{
-                    background: '#121821', border: '1px solid #1f2937',
-                    borderRadius: 6, fontSize: 12,
-                  }}
-                  labelStyle={{ color: '#8b98a9' }}
+                  {...tooltipStyle(chart)}
                   formatter={(value: number, name: string) => [
                     name === 'volume' ? formatCompact(value) : formatNumber(value),
                     name,
                   ]}
                 />
-                <Legend wrapperStyle={{ fontSize: 11, color: '#8b98a9' }} />
+                <Legend wrapperStyle={{ fontSize: 12, color: chart.muted, paddingTop: 8 }} iconSize={10} />
                 {showVolume && (
-                  <Bar yAxisId="volume" dataKey="volume" fill="#1f2937" name="volume" />
+                  <Bar yAxisId="volume" dataKey="volume" fill={chart.volume} fillOpacity={0.6} name="volume" />
                 )}
-                <Line yAxisId="price" type="monotone" dataKey="close" stroke="#3b82f6"
+                <Line yAxisId="price" type="monotone" dataKey="close" stroke={chart.accent}
                   dot={false} strokeWidth={1.6} name="close" />
                 {showSMA && (
                   <>
-                    <Line yAxisId="price" type="monotone" dataKey="sma20" stroke="#26a96c"
+                    <Line yAxisId="price" type="monotone" dataKey="sma20" stroke={chart.muted}
                       dot={false} strokeWidth={1} name="SMA 20" connectNulls />
-                    <Line yAxisId="price" type="monotone" dataKey="sma50" stroke="#d29922"
+                    <Line yAxisId="price" type="monotone" dataKey="sma50" stroke={chart.warn}
                       dot={false} strokeWidth={1} name="SMA 50" connectNulls />
                   </>
                 )}
                 {signal?.stop_loss && (
-                  <Line yAxisId="price" dataKey={() => signal.stop_loss} stroke="#e5484d"
+                  <Line yAxisId="price" dataKey={() => signal.stop_loss} stroke={chart.bear}
                     dot={false} strokeDasharray="4 4" strokeWidth={1} name="stop" />
                 )}
                 {signal?.take_profit && (
-                  <Line yAxisId="price" dataKey={() => signal.take_profit} stroke="#26a96c"
+                  <Line yAxisId="price" dataKey={() => signal.take_profit} stroke={chart.bull}
                     dot={false} strokeDasharray="4 4" strokeWidth={1} name="target" />
                 )}
               </ComposedChart>
@@ -242,7 +256,7 @@ export default function StockPage() {
         )}
       </Panel>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         {/* ------------------------------------------------------- signal */}
         <Panel title="Signal" className="lg:col-span-2">
           {!signal && (
@@ -258,18 +272,21 @@ export default function StockPage() {
                 <Confidence value={signal.confidence} />
                 <RiskBadge level={signal.risk_level} />
                 <QualityBadge quality={signal.data_quality} asOf={signal.price_as_of} />
-                <span className="text-2xs text-ink-faint">
-                  {signal.horizon_days}-day horizon · model {signal.model_version ?? '--'}
-                  {signal.regime && ` · ${signal.regime} regime`}
-                </span>
               </div>
+              <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs">
+                <div className="flex gap-1.5"><dt className="text-ink-faint">Horizon</dt><dd className="font-mono tabular-nums">{signal.horizon_days}d</dd></div>
+                <div className="flex gap-1.5"><dt className="text-ink-faint">Model</dt><dd className="font-mono">{signal.model_version ?? '--'}</dd></div>
+                {signal.regime && (
+                  <div className="flex gap-1.5"><dt className="text-ink-faint">Regime</dt><dd className="font-mono">{signal.regime}</dd></div>
+                )}
+              </dl>
 
-              <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-5 border-t border-line pt-4 sm:grid-cols-4">
                 <Stat
                   label="Entry zone"
                   value={
                     signal.entry_low && signal.entry_high
-                      ? `${formatNumber(signal.entry_low)}–${formatNumber(signal.entry_high)}`
+                      ? `${formatNumber(signal.entry_low)} to ${formatNumber(signal.entry_high)}`
                       : '--'
                   }
                 />
@@ -282,14 +299,14 @@ export default function StockPage() {
                 />
               </div>
 
-              <h3 className="stat-label mt-5 mb-2">Why this signal</h3>
-              <ul className="space-y-1.5">
+              <h3 className="mb-2 mt-6 text-xs font-medium text-ink-muted">Why this signal</h3>
+              <ul className="space-y-2">
                 {signal.rationale.map((item, index) => (
-                  <li key={index} className="flex gap-2 text-sm">
-                    <span className={`shrink-0 ${CONTRIBUTION_STYLE[item.contribution]}`}>
-                      {item.contribution === 'bullish' ? '▲'
-                        : item.contribution === 'bearish' ? '▼' : '•'}
-                    </span>
+                  <li key={index} className="flex items-start gap-2 text-sm">
+                    <DirectionIcon
+                      direction={CONTRIBUTION_DIRECTION[item.contribution] ?? 'neutral'}
+                      className="mt-[3px]"
+                    />
                     <span>
                       <span className="text-ink-muted">{item.factor}:</span> {item.detail}
                     </span>
@@ -297,8 +314,8 @@ export default function StockPage() {
                 ))}
               </ul>
 
-              <p className="mt-4 text-2xs text-ink-faint">
-                Generated {relativeTime(signal.generated_at)} · expires{' '}
+              <p className="mt-5 text-xs text-ink-faint">
+                Generated {relativeTime(signal.generated_at)}, expires{' '}
                 {formatDateTime(signal.expires_at)}
               </p>
               <div className="mt-2"><Disclaimer /></div>
@@ -312,7 +329,7 @@ export default function StockPage() {
             <Empty message="Not enough history to compute indicators" />
           )}
           {Object.keys(technical).length > 0 && (
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            <dl className="grid grid-cols-2 gap-x-5 gap-y-2.5 text-sm">
               {[
                 ['RSI (14)', technical.rsi], ['MACD', technical.macd],
                 ['MACD signal', technical.macd_signal], ['ADX (14)', technical.adx],
@@ -333,7 +350,7 @@ export default function StockPage() {
         </Panel>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* ------------------------------------------------- fundamentals */}
         <Panel title="Fundamentals">
           {fundamentals.score === null ? (
@@ -349,10 +366,11 @@ export default function StockPage() {
                   sub={`coverage ${(fundamentals.coverage * 100).toFixed(0)}%`}
                 />
                 {!fundamentals.reliable && (
-                  <span className="chip bg-warn-soft text-warn">LOW COVERAGE — INDICATIVE ONLY</span>
+                  <span className="chip bg-warn-soft text-warn">LOW COVERAGE, INDICATIVE ONLY</span>
                 )}
               </div>
-              <table className="data-table mt-3">
+              <div className="-mx-4 mt-3 overflow-x-auto px-4">
+              <table className="data-table">
                 <thead>
                   <tr>
                     <th>Metric</th><th className="text-right">Value</th>
@@ -365,7 +383,7 @@ export default function StockPage() {
                     .filter((c) => c.value !== null)
                     .map((comparison) => (
                       <tr key={comparison.metric}>
-                        <td className="text-ink-muted">{comparison.metric.replace(/_/g, ' ')}</td>
+                        <td className="text-ink-muted">{humanize(comparison.metric)}</td>
                         <td className="text-right font-mono tabular-nums">
                           {formatNumber(comparison.value)}
                         </td>
@@ -383,10 +401,11 @@ export default function StockPage() {
                     ))}
                 </tbody>
               </table>
+              </div>
               {fundamentals.notes.length > 0 && (
-                <ul className="mt-2 space-y-0.5">
+                <ul className="mt-3 space-y-0.5 text-xs text-ink-faint">
                   {fundamentals.notes.map((note) => (
-                    <li key={note} className="text-2xs text-ink-faint">· {note}</li>
+                    <li key={note}>{note}</li>
                   ))}
                 </ul>
               )}
@@ -399,10 +418,14 @@ export default function StockPage() {
           title="News & sentiment"
           bodyClassName="p-0"
           actions={
-            <span className="text-2xs text-ink-faint">
-              {sentiment.count > 0
-                ? `${sentiment.label} · ${sentiment.score.toFixed(2)} (confidence ${sentiment.confidence.toFixed(2)})`
-                : 'no scored articles'}
+            <span className="text-right text-xs text-ink-faint">
+              {sentiment.count > 0 ? (
+                <>
+                  <span className="text-ink-muted">{humanize(sentiment.label)}</span>{' '}
+                  <span className="font-mono tabular-nums">{sentiment.score.toFixed(2)}</span>, confidence{' '}
+                  <span className="font-mono tabular-nums">{sentiment.confidence.toFixed(2)}</span>
+                </>
+              ) : 'No scored articles'}
             </span>
           }
         >
@@ -411,37 +434,36 @@ export default function StockPage() {
           )}
           <ul className="divide-y divide-line/60">
             {news.map((article, index) => (
-              <li key={index} className="px-4 py-2.5">
+              <li key={index} className="px-4 py-3">
                 <div className="flex items-start gap-2">
                   {article.sentiment && (
-                    <span
-                      className={`mt-1 shrink-0 text-2xs ${
-                        article.sentiment.label === 'POSITIVE' ? 'text-bull'
-                          : article.sentiment.label === 'NEGATIVE' ? 'text-bear' : 'text-ink-faint'
-                      }`}
-                    >
-                      {article.sentiment.label === 'POSITIVE' ? '▲'
-                        : article.sentiment.label === 'NEGATIVE' ? '▼' : '•'}
-                    </span>
+                    <DirectionIcon
+                      direction={
+                        SENTIMENT_DIRECTION[article.sentiment.label as keyof typeof SENTIMENT_DIRECTION]
+                          ?? 'neutral'
+                      }
+                      className="mt-[3px]"
+                    />
                   )}
                   <div className="min-w-0">
                     {article.url ? (
                       <a
                         href={article.url} target="_blank" rel="noopener noreferrer"
-                        className="text-sm hover:text-accent"
+                        className="text-sm transition-colors hover:text-accent"
                       >
                         {article.headline}
                       </a>
                     ) : (
                       <p className="text-sm">{article.headline}</p>
                     )}
-                    <p className="mt-0.5 text-2xs text-ink-faint">
-                      {article.source} · published {relativeTime(article.published_at)}
+                    <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-ink-faint">
                       {article.is_breaking && (
-                        <span className="ml-1 text-warn">· BREAKING</span>
+                        <span className="chip bg-warn-soft text-warn">BREAKING</span>
                       )}
-                      <span className="ml-1">
-                        (retrieved {relativeTime(article.retrieved_at)})
+                      <span>{article.source}</span>
+                      <span>
+                        published {relativeTime(article.published_at)}, retrieved{' '}
+                        {relativeTime(article.retrieved_at)}
                       </span>
                     </p>
                   </div>
@@ -450,7 +472,7 @@ export default function StockPage() {
             ))}
           </ul>
           {sentiment.note && (
-            <p className="border-t border-line px-4 py-2 text-2xs text-ink-faint">
+            <p className="border-t border-line px-4 py-3 text-xs text-ink-faint">
               {sentiment.note}
             </p>
           )}
