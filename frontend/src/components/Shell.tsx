@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
+import { SignOut } from '@phosphor-icons/react/ssr';
 import { clearTokens, fetcher, getToken, type Health, type MarketStatus } from '@/lib/api';
 import { useLiveUpdates } from '@/hooks/useLiveUpdates';
 import { StatusDot } from '@/components/ui';
@@ -17,6 +18,35 @@ const NAV = [
   { href: '/models', label: 'Models' },
   { href: '/system', label: 'System' },
 ];
+
+function NavLinks({ pathname }: { pathname: string }) {
+  return (
+    <>
+      {NAV.map((item) => {
+        const active =
+          item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            aria-current={active ? 'page' : undefined}
+            className={`relative flex h-full shrink-0 items-center px-2.5 text-sm transition-colors ${
+              active ? 'text-ink' : 'text-ink-muted hover:text-ink'
+            }`}
+          >
+            {item.label}
+            <span
+              aria-hidden
+              className={`absolute inset-x-2.5 bottom-0 h-0.5 rounded-full bg-accent transition-opacity duration-200 ${
+                active ? 'opacity-100' : 'opacity-0'
+              }`}
+            />
+          </Link>
+        );
+      })}
+    </>
+  );
+}
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -39,68 +69,70 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   if (pathname === '/login') return <>{children}</>;
   if (authed === null) {
-    return <div className="p-8 text-sm text-ink-faint">Checking session…</div>;
+    return (
+      <div className="min-h-[100dvh]" role="status">
+        <span className="sr-only">Checking session</span>
+        <div className="h-14 border-b border-line" />
+        <div className="mx-auto max-w-[1600px] space-y-4 px-4 py-6">
+          <div className="skeleton h-6 w-48" />
+          <div className="skeleton h-40 w-full" />
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="sticky top-0 z-20 border-b border-line bg-ground/95 backdrop-blur">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5">
-          <Link href="/" className="flex items-center gap-2 shrink-0">
-            <span className="h-2 w-2 rounded-sm bg-accent" />
-            <span className="font-semibold tracking-tight">Stock Intelligence</span>
+    <div className="flex min-h-[100dvh] flex-col">
+      <header className="sticky top-0 z-20 border-b border-line bg-ground/90 backdrop-blur-md">
+        <div className="mx-auto flex h-14 max-w-[1600px] items-stretch gap-6 px-4">
+          <Link href="/" className="flex shrink-0 items-center gap-2">
+            <span aria-hidden className="h-3 w-3 rounded-[3px] bg-accent" />
+            <span className="text-[15px] font-semibold tracking-tight">Stock Intelligence</span>
           </Link>
 
-          <nav className="flex flex-wrap items-center gap-1 order-3 w-full lg:order-2 lg:w-auto">
-            {NAV.map((item) => {
-              const active =
-                item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`rounded px-2.5 py-1 text-sm transition-colors ${
-                    active
-                      ? 'bg-ground-overlay text-ink'
-                      : 'text-ink-muted hover:text-ink'
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
+          <nav aria-label="Primary" className="hidden items-stretch lg:flex">
+            <NavLinks pathname={pathname} />
           </nav>
 
-          <div className="ml-auto flex items-center gap-3 order-2 lg:order-3">
-            <div className="hidden md:flex items-center gap-2.5 text-2xs">
+          <div className="ml-auto flex items-center gap-4 text-xs">
+            <div className="hidden items-center gap-3 md:flex">
               {markets?.map((market) => (
-                <span key={market.exchange} className="flex items-center gap-1">
+                <span
+                  key={market.exchange}
+                  className="flex items-center gap-1.5 text-ink-muted"
+                  title={`${market.exchange} ${market.is_open ? 'open' : 'closed'}: ${market.reason}`}
+                >
                   <span
-                    className={`h-1.5 w-1.5 rounded-full ${
-                      market.is_open ? 'bg-bull' : 'bg-ink-faint'
-                    }`}
+                    aria-hidden
+                    className={`h-1.5 w-1.5 rounded-full ${market.is_open ? 'bg-bull' : 'bg-ink-faint'}`}
                   />
-                  <span className="text-ink-muted">{market.exchange}</span>
+                  {market.exchange}
+                  <span className="text-ink-faint">{market.is_open ? 'open' : 'closed'}</span>
                 </span>
               ))}
             </div>
 
             <span
-              className="flex items-center gap-1 text-2xs text-ink-faint"
+              className="hidden items-center gap-1.5 text-ink-muted sm:flex"
               title={connected ? 'Live updates connected' : 'Live updates reconnecting'}
             >
               <span
+                aria-hidden
                 className={`h-1.5 w-1.5 rounded-full ${
-                  connected ? 'bg-bull' : 'bg-warn animate-pulse'
+                  connected ? 'bg-bull' : 'bg-warn motion-safe:animate-pulse'
                 }`}
               />
-              {connected ? 'live' : 'offline'}
+              {connected ? 'Live' : 'Reconnecting'}
             </span>
 
             {health && (
-              <Link href="/system" className="flex items-center gap-1 text-2xs text-ink-muted">
+              <Link
+                href="/system"
+                className="flex items-center gap-1.5 text-ink-muted transition-colors hover:text-ink"
+                title="System health"
+              >
                 <StatusDot status={health.status} />
-                {health.status.toLowerCase()}
+                <span className="capitalize">{health.status.toLowerCase()}</span>
               </Link>
             )}
 
@@ -110,20 +142,30 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 clearTokens();
                 router.replace('/login');
               }}
-              className="text-2xs text-ink-faint hover:text-ink"
+              className="flex items-center gap-1.5 rounded-md py-1 text-ink-faint transition-colors hover:text-ink"
             >
-              Sign out
+              <SignOut size={14} aria-hidden />
+              <span className="hidden sm:inline">Sign out</span>
+              <span className="sr-only sm:hidden">Sign out</span>
             </button>
           </div>
         </div>
+
+        {/* Below lg the nav moves to its own row and scrolls sideways. */}
+        <nav
+          aria-label="Primary"
+          className="no-scrollbar flex h-10 items-stretch overflow-x-auto border-t border-line px-1.5 lg:hidden"
+        >
+          <NavLinks pathname={pathname} />
+        </nav>
       </header>
 
-      <main className="flex-1 px-4 py-5">{children}</main>
+      <main className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-6">{children}</main>
 
-      <footer className="border-t border-line px-4 py-3">
-        <p className="text-2xs text-ink-faint">
-          Signals are model estimates with real uncertainty — not investment advice,
-          and never a guarantee. Check the data-freshness tag beside every price:
+      <footer className="border-t border-line">
+        <p className="mx-auto max-w-[1600px] px-4 py-4 text-xs leading-relaxed text-ink-faint">
+          Signals are model estimates with real uncertainty. They are not investment
+          advice and never a guarantee. Check the freshness tag beside every price:
           DELAYED and EOD figures are not live, and SYNTHETIC is test data.
         </p>
       </footer>

@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from 'next';
+import { GeistSans } from 'geist/font/sans';
+import { GeistMono } from 'geist/font/mono';
 import './globals.css';
 import { Shell } from '@/components/Shell';
 
@@ -11,12 +13,15 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#0b0f14',
+  themeColor: [
+    { media: '(prefers-color-scheme: dark)', color: '#0e0f11' },
+    { media: '(prefers-color-scheme: light)', color: '#f4f5f7' },
+  ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body className="font-sans">
         <Shell>{children}</Shell>
       </body>

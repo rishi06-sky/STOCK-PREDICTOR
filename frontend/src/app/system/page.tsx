@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import useSWR from 'swr';
 import { api, fetcher, type Health } from '@/lib/api';
-import { formatDateTime, relativeTime } from '@/lib/format';
-import { Empty, ErrorBox, Loading, Panel, StatusDot } from '@/components/ui';
+import { formatDateTime, humanize, relativeTime } from '@/lib/format';
+import { Empty, ErrorBox, Loading, PageHeader, Panel, StatusDot } from '@/components/ui';
 
 interface SystemEvent {
   id: number; component: string; event_type: string; severity: string;
@@ -67,80 +67,73 @@ export default function SystemPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight">System health</h1>
-          <p className="text-2xs text-ink-faint">
-            Components report their own status with a reason; unknown is treated
-            as unhealthy, never assumed healthy.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button className="btn-ghost" onClick={runPipeline} disabled={busy}>
-            Run pipeline now
-          </button>
-          {trading.data?.kill_switch_engaged ? (
-            <button className="btn-primary" onClick={() => toggleKillSwitch(false)} disabled={busy}>
-              Release kill switch
+    <div className="space-y-5">
+      <PageHeader
+        title="System health"
+        description="Components report their own status with a reason. Unknown is treated as unhealthy, never assumed healthy."
+        actions={
+          <>
+            <button className="btn-ghost" onClick={runPipeline} disabled={busy}>
+              Run pipeline
             </button>
-          ) : (
-            <button
-              className="btn border border-bear/50 bg-bear-soft text-bear hover:bg-bear/20"
-              onClick={() => toggleKillSwitch(true)}
-              disabled={busy}
-            >
-              Engage kill switch
-            </button>
-          )}
-        </div>
-      </div>
+            {trading.data?.kill_switch_engaged ? (
+              <button className="btn-primary" onClick={() => toggleKillSwitch(false)} disabled={busy}>
+                Release kill switch
+              </button>
+            ) : (
+              <button className="btn-danger" onClick={() => toggleKillSwitch(true)} disabled={busy}>
+                Engage kill switch
+              </button>
+            )}
+          </>
+        }
+      />
 
-      {message && <div className="text-2xs text-ink-muted">{message}</div>}
+      {message && <p role="status" className="text-sm text-ink-muted">{message}</p>}
 
       {trading.data?.kill_switch_engaged && (
-        <ErrorBox message="KILL SWITCH ENGAGED — all new orders are blocked in paper and live mode." />
+        <ErrorBox message="Kill switch engaged. All new orders are blocked in paper and live mode." />
       )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <Panel title="Components" className="lg:col-span-2" bodyClassName="p-0">
-          {health.isLoading && <Loading />}
+          {health.isLoading && <Loading rows={5} />}
           {health.data && (
             <ul className="divide-y divide-line/60">
               {health.data.components.map((component) => (
                 <li key={component.component} className="px-4 py-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2.5">
                     <StatusDot status={component.status} />
-                    <span className="text-sm font-medium">
-                      {component.component.replace(/_/g, ' ')}
+                    <span className="text-sm font-medium">{humanize(component.component)}</span>
+                    <span className="ml-auto text-xs capitalize text-ink-faint">
+                      {component.status.toLowerCase()}
                     </span>
-                    <span className="ml-auto text-2xs text-ink-faint">{component.status}</span>
                   </div>
-                  <p className="mt-1 pl-4 text-2xs text-ink-muted">{component.detail}</p>
+                  <p className="mt-1 pl-[18px] text-xs text-ink-muted">{component.detail}</p>
                 </li>
               ))}
             </ul>
           )}
         </Panel>
 
-        <div className="space-y-4">
+        <div className="space-y-5">
           <Panel title="Trading mode">
             {trading.data && (
-              <dl className="space-y-2 text-sm">
+              <dl className="space-y-2.5 text-sm">
                 <div className="flex justify-between">
                   <dt className="text-ink-muted">Mode</dt>
                   <dd className="font-mono uppercase">{trading.data.mode}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-ink-muted">Live trading</dt>
-                  <dd className={trading.data.allowed ? 'text-bear' : 'text-bull'}>
-                    {trading.data.allowed ? 'ENABLED' : 'disabled'}
+                  <dd className={trading.data.allowed ? 'font-medium text-bear' : 'text-bull'}>
+                    {trading.data.allowed ? 'Enabled' : 'Disabled'}
                   </dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-ink-muted">Kill switch</dt>
-                  <dd className={trading.data.kill_switch_engaged ? 'text-bear' : 'text-ink-muted'}>
-                    {trading.data.kill_switch_engaged ? 'ENGAGED' : 'released'}
+                  <dd className={trading.data.kill_switch_engaged ? 'font-medium text-bear' : 'text-ink-muted'}>
+                    {trading.data.kill_switch_engaged ? 'Engaged' : 'Released'}
                   </dd>
                 </div>
                 <div className="flex justify-between">
@@ -152,13 +145,15 @@ export default function SystemPage() {
                   <dd className="font-mono">{trading.data.slippage_bps} bps</dd>
                 </div>
                 {trading.data.blockers.length > 0 && (
-                  <div className="pt-2 border-t border-line">
-                    <dt className="stat-label mb-1">Live trading blocked by</dt>
-                    <ul className="space-y-0.5">
-                      {trading.data.blockers.map((blocker) => (
-                        <li key={blocker} className="text-2xs text-ink-faint">· {blocker}</li>
-                      ))}
-                    </ul>
+                  <div className="border-t border-line pt-3">
+                    <dt className="mb-1.5 text-xs text-ink-muted">Live trading blocked by</dt>
+                    <dd>
+                      <ul className="list-disc space-y-0.5 pl-4 text-xs text-ink-faint marker:text-line-bright">
+                        {trading.data.blockers.map((blocker) => (
+                          <li key={blocker}>{blocker}</li>
+                        ))}
+                      </ul>
+                    </dd>
                   </div>
                 )}
               </dl>
@@ -167,16 +162,16 @@ export default function SystemPage() {
 
           <Panel title="Market regime">
             {!regimes.data?.length && <Empty message="No regime computed yet" />}
-            <ul className="space-y-2">
+            <ul className="space-y-3">
               {regimes.data?.map((regime) => (
                 <li key={String(regime.exchange)} className="text-sm">
                   <div className="flex items-center justify-between">
                     <span className="font-medium">{String(regime.exchange)}</span>
-                    <span className="font-mono text-2xs">
+                    <span className="font-mono text-xs">
                       {String(regime.regime)} / {String(regime.volatility_regime)}
                     </span>
                   </div>
-                  <div className="text-2xs text-ink-faint">
+                  <div className="text-xs text-ink-faint">
                     as of {String(regime.trade_date)}
                   </div>
                 </li>
@@ -198,15 +193,15 @@ export default function SystemPage() {
               <tbody>
                 {events.data.map((event) => (
                   <tr key={event.id}>
-                    <td className="text-2xs text-ink-faint" title={formatDateTime(event.created_at)}>
+                    <td className="text-xs text-ink-faint" title={formatDateTime(event.created_at)}>
                       {relativeTime(event.created_at)}
                     </td>
                     <td className="text-ink-muted">{event.component}</td>
-                    <td className="font-mono text-2xs">{event.event_type}</td>
-                    <td className={`text-2xs font-medium ${SEVERITY_COLOR[event.severity] ?? ''}`}>
+                    <td className="font-mono text-xs">{event.event_type}</td>
+                    <td className={`text-xs font-medium ${SEVERITY_COLOR[event.severity] ?? ''}`}>
                       {event.severity}
                     </td>
-                    <td className="max-w-md truncate text-2xs text-ink-muted" title={event.message}>
+                    <td className="max-w-md truncate text-xs text-ink-muted" title={event.message}>
                       {event.message}
                     </td>
                   </tr>

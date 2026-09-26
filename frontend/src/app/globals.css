@@ -2,63 +2,136 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: dark; }
+/*
+ * Theme tokens as RGB channels. Dark is the default; light follows the
+ * operating system. Both sets are checked for WCAG AA against their grounds.
+ */
+:root {
+  color-scheme: dark;
+  --ground: 14 15 17;
+  --ground-raised: 21 22 25;
+  --ground-overlay: 29 31 35;
+  --line: 38 40 45;
+  --line-bright: 54 57 64;
+  --ink: 232 233 235;
+  --ink-muted: 160 164 172;
+  --ink-faint: 134 139 148;
+  --accent: 118 150 240;
+  --accent-soft: 27 35 58;
+  --accent-ink: 12 16 28;
+  --bull: 70 186 140;
+  --bull-soft: 20 45 36;
+  --bear: 238 98 104;
+  --bear-soft: 56 24 27;
+  --warn: 222 170 72;
+  --warn-soft: 52 40 16;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --ground: 244 245 247;
+    --ground-raised: 252 252 253;
+    --ground-overlay: 236 238 241;
+    --line: 225 228 232;
+    --line-bright: 200 205 212;
+    --ink: 22 24 28;
+    --ink-muted: 80 85 94;
+    --ink-faint: 102 108 118;
+    --accent: 44 90 200;
+    --accent-soft: 228 235 252;
+    --accent-ink: 252 252 253;
+    --bull: 10 114 78;
+    --bull-soft: 222 243 234;
+    --bear: 196 50 58;
+    --bear-soft: 252 230 231;
+    --warn: 146 98 8;
+    --warn-soft: 251 240 214;
+  }
+}
 
 html, body {
   @apply bg-ground text-ink antialiased;
+  font-feature-settings: 'cv11', 'ss01';
 }
 
-/* Terminal-style scrollbars: present but unobtrusive. */
+:focus-visible {
+  @apply outline-none ring-2 ring-accent/70 ring-offset-2 ring-offset-ground;
+}
+
+/* Scrollbars: present but unobtrusive. */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { @apply bg-ground; }
 ::-webkit-scrollbar-thumb { @apply bg-line-bright rounded; }
 ::-webkit-scrollbar-thumb:hover { @apply bg-ink-faint; }
+
+@layer utilities {
+  .no-scrollbar { scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+}
 
 @layer components {
   .panel {
     @apply bg-ground-raised border border-line rounded-lg;
   }
   .panel-header {
-    @apply flex items-center justify-between px-4 py-3 border-b border-line;
+    @apply flex min-h-[44px] flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-2.5 border-b border-line;
   }
   .panel-title {
-    @apply text-xs font-semibold uppercase tracking-wider text-ink-muted;
+    @apply text-[13px] font-medium text-ink;
   }
   .stat-label {
-    @apply text-2xs uppercase tracking-wider text-ink-faint;
+    @apply text-xs text-ink-muted;
   }
   .stat-value {
-    @apply font-mono tabular-nums;
+    @apply font-mono tabular-nums tracking-tight;
   }
   .data-table {
     @apply w-full text-sm border-collapse;
   }
   .data-table th {
-    @apply text-2xs uppercase tracking-wider text-ink-faint font-medium
-           text-left px-3 py-2 border-b border-line whitespace-nowrap;
+    @apply text-xs font-normal text-ink-faint text-left px-3 py-2
+           border-b border-line whitespace-nowrap;
   }
   .data-table td {
     @apply px-3 py-2 border-b border-line/60 whitespace-nowrap;
   }
+  .data-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+  .data-table tbody tr {
+    @apply transition-colors duration-150;
+  }
   .data-table tbody tr:hover {
-    @apply bg-ground-overlay;
+    @apply bg-ground-overlay/70;
   }
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-md px-3 py-1.5
-           text-sm font-medium transition-colors disabled:opacity-50
-           disabled:cursor-not-allowed;
+           text-sm font-medium whitespace-nowrap transition-[background-color,border-color,color,transform]
+           duration-150 active:scale-[0.98] disabled:opacity-50
+           disabled:cursor-not-allowed disabled:active:scale-100;
   }
-  .btn-primary { @apply btn bg-accent text-white hover:bg-accent/85; }
+  .btn-primary { @apply btn bg-accent text-accent-ink hover:bg-accent/90; }
   .btn-ghost {
     @apply btn border border-line text-ink-muted hover:text-ink hover:border-line-bright;
   }
+  .btn-danger {
+    @apply btn border border-bear/50 bg-bear-soft text-bear hover:border-bear;
+  }
+  .link {
+    @apply text-xs text-accent underline-offset-4 hover:underline;
+  }
   .input {
-    @apply w-full bg-ground border border-line rounded-md px-3 py-2 text-sm
-           text-ink placeholder:text-ink-faint focus:outline-none
-           focus:border-accent focus:ring-1 focus:ring-accent;
+    @apply w-full bg-ground border border-line-bright rounded-md px-3 py-2 text-sm
+           text-ink placeholder:text-ink-faint transition-colors
+           focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent
+           focus-visible:ring-offset-0;
   }
   .chip {
     @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs
-           font-medium tracking-wide;
+           font-medium tracking-wide whitespace-nowrap;
+  }
+  .skeleton {
+    @apply rounded bg-ground-overlay motion-safe:animate-pulse;
   }
 }

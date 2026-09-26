@@ -68,6 +68,13 @@ export function formatDateTime(iso: string | null | undefined): string {
   });
 }
 
+/** `return_on_equity` -> `Return on equity`: sentence case for API keys and labels. */
+export function humanize(key: string | null | undefined): string {
+  if (!key) return '--';
+  const text = key.replace(/_/g, ' ').toLowerCase();
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 export const directionClass = (value: number | null | undefined): string => {
   if (value === null || value === undefined || Number.isNaN(value)) return 'text-ink-muted';
   if (value > 0) return 'text-bull';

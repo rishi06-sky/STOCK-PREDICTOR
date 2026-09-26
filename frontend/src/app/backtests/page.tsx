@@ -7,7 +7,8 @@ import {
 } from 'recharts';
 import { fetcher } from '@/lib/api';
 import { directionClass, formatCurrency, formatNumber, formatPercent, relativeTime } from '@/lib/format';
-import { Disclaimer, Empty, Loading, Panel, Stat } from '@/components/ui';
+import { Disclaimer, Empty, Loading, PageHeader, Panel } from '@/components/ui';
+import { tooltipStyle, useChartTheme } from '@/hooks/useChartTheme';
 
 interface Backtest {
   id: number; name: string; start_date: string; end_date: string;
@@ -34,15 +35,14 @@ export default function BacktestsPage() {
   const list = useSWR<Backtest[]>('/backtests', fetcher);
   const [selected, setSelected] = useState<number | null>(null);
   const detail = useSWR<BacktestDetail>(selected ? `/backtests/${selected}` : null, fetcher);
+  const chart = useChartTheme();
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-lg font-semibold tracking-tight">Backtests</h1>
-        <p className="text-2xs text-ink-faint">
-          Simulated historical results. Backtest performance is not live performance.
-        </p>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="Backtests"
+        description="Simulated historical results. Backtest performance is not live performance."
+      />
 
       {list.isLoading && <Panel><Loading /></Panel>}
       {list.data?.length === 0 && (
@@ -76,8 +76,8 @@ export default function BacktestsPage() {
                 {list.data.map((backtest) => (
                   <tr key={backtest.id}>
                     <td className="font-medium">{backtest.name}</td>
-                    <td className="text-2xs text-ink-muted">
-                      {backtest.start_date} → {backtest.end_date}
+                    <td className="font-mono text-xs tabular-nums text-ink-muted">
+                      {backtest.start_date} to {backtest.end_date}
                     </td>
                     <td>
                       <span
@@ -106,12 +106,13 @@ export default function BacktestsPage() {
                     </td>
                     <td className="text-right font-mono tabular-nums">{formatNumber(backtest.profit_factor)}</td>
                     <td className="text-right font-mono tabular-nums">{backtest.total_trades ?? '--'}</td>
-                    <td className="text-2xs text-ink-faint">
+                    <td className="text-xs text-ink-faint">
                       {backtest.completed_at ? relativeTime(backtest.completed_at) : 'running…'}
                     </td>
                     <td>
                       <button
-                        className="text-2xs text-accent hover:underline"
+                        className="link"
+                        aria-expanded={selected === backtest.id}
                         onClick={() => setSelected(backtest.id === selected ? null : backtest.id)}
                       >
                         {selected === backtest.id ? 'Hide' : 'Open'}
@@ -127,32 +128,31 @@ export default function BacktestsPage() {
 
       {selected && detail.data && (
         <>
-          <Panel title="Equity curve (BACKTEST)" bodyClassName="p-3">
+          <Panel title={`Equity curve, backtest: ${detail.data.backtest.name}`} bodyClassName="p-4">
             {detail.data.equity_curve && detail.data.equity_curve.length > 1 ? (
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={detail.data.equity_curve}>
-                    <CartesianGrid stroke="#1f2937" vertical={false} />
-                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#5c6b7d' }} stroke="#1f2937" />
+                    <CartesianGrid stroke={chart.grid} vertical={false} />
+                    <XAxis
+                      dataKey="date" tick={{ fontSize: 11, fill: chart.tick }} stroke={chart.axis}
+                      tickLine={false} minTickGap={32}
+                    />
                     <YAxis
-                      tick={{ fontSize: 10, fill: '#5c6b7d' }} stroke="#1f2937" width={70}
+                      tick={{ fontSize: 11, fill: chart.tick }} stroke={chart.axis} width={70}
+                      axisLine={false} tickLine={false}
                       domain={['auto', 'auto']}
-                      tickFormatter={(v) => Intl.NumberFormat(undefined, { notation: 'compact' }).format(v)}
+                      tickFormatter={(v) => Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 2 }).format(v)}
                     />
-                    <Tooltip
-                      contentStyle={{
-                        background: '#121821', border: '1px solid #1f2937',
-                        borderRadius: 6, fontSize: 12,
-                      }}
-                    />
-                    <Line type="monotone" dataKey="equity" stroke="#3b82f6" dot={false} strokeWidth={1.5} />
+                    <Tooltip {...tooltipStyle(chart)} />
+                    <Line type="monotone" dataKey="equity" stroke={chart.accent} dot={false} strokeWidth={1.5} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
             ) : (
               <Empty message="No equity curve recorded for this run" />
             )}
-            <p className="mt-2 text-2xs text-warn">{detail.data.disclaimer}</p>
+            <p className="mt-2 text-xs text-warn">{detail.data.disclaimer}</p>
           </Panel>
 
           <Panel title="Trades" bodyClassName="p-0">
@@ -174,8 +174,8 @@ export default function BacktestsPage() {
                   <tbody>
                     {detail.data.trades.slice(0, 200).map((trade, index) => (
                       <tr key={index}>
-                        <td className="text-2xs">{trade.entry_date}</td>
-                        <td className="text-2xs">{trade.exit_date}</td>
+                        <td className="font-mono text-xs tabular-nums">{trade.entry_date}</td>
+                        <td className="font-mono text-xs tabular-nums">{trade.exit_date}</td>
                         <td className="text-right font-mono tabular-nums">{formatCurrency(trade.entry_price)}</td>
                         <td className="text-right font-mono tabular-nums">{formatCurrency(trade.exit_price)}</td>
                         <td className={`text-right font-mono tabular-nums ${directionClass(trade.net_pnl)}`}>
@@ -185,7 +185,7 @@ export default function BacktestsPage() {
                           {formatPercent(trade.return_pct)}
                         </td>
                         <td className="text-right font-mono tabular-nums">{trade.holding_days ?? '--'}</td>
-                        <td className="text-2xs text-ink-muted">{trade.exit_reason ?? '--'}</td>
+                        <td className="text-xs text-ink-muted">{trade.exit_reason ?? '--'}</td>
                       </tr>
                     ))}
                   </tbody>
