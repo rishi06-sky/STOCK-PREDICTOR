@@ -5,8 +5,10 @@
 #   docker compose exec api alembic upgrade head
 #   docker compose exec api python scripts/seed.py
 #
-# Only the frontend and API are published to the host; Postgres and Redis stay
-# on the internal network.
+# Only the frontend and API are published to the host, and only on
+# 127.0.0.1 by default; Postgres and Redis stay on the internal network. On a
+# public server, set COMPOSE_PROFILES=https and DOMAIN in .env to add Caddy,
+# which serves both over HTTPS on ports 80/443 (see docs/operations.md).
 
 name: stock-intelligence
 
@@ -82,7 +84,7 @@ services:
       SCHEDULER_ENABLED: "false"
       KITE_STREAMING_ENABLED: "false"
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "${BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8000}:8000"
     volumes:
       - model_store:/app/model_store
     depends_on:
@@ -118,8 +120,29 @@ services:
         NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000/api/v1}
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "${BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-3000}:3000"
     depends_on: [api]
+    networks: [internal]
+
+  # HTTPS entry point for a public server, enabled with COMPOSE_PROFILES=https.
+  # Caddy obtains and renews the certificate for DOMAIN itself, and replaces
+  # any X-Forwarded-For a client sends with the real address, which the API's
+  # rate limiter keys on.
+  caddy:
+    image: caddy:2-alpine
+    profiles: [https]
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [api, frontend]
     networks: [internal]
 
 # Only needed behind a TLS-intercepting proxy: point PROXY_CA_FILE at your CA
@@ -133,6 +156,8 @@ volumes:
   postgres_data:
   redis_data:
   model_store:
+  caddy_data:
+  caddy_config:
 
 networks:
   internal:

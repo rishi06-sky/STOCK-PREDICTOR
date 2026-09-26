@@ -97,6 +97,10 @@ docker compose exec api python scripts/seed.py   # markets, exchanges, universe
 Open <http://localhost:3000>. **The first account you register becomes the
 administrator.**
 
+The API and frontend listen on `127.0.0.1` only. To run on a public server
+with HTTPS on your own domain, see "Deploying" in
+[docs/operations.md](docs/operations.md), which sets it all up with one script.
+
 Populate data and train the first model (the scheduler will then keep it
 current on its own):
 

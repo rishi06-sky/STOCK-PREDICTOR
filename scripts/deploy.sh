@@ -22,6 +22,16 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
+# Compose reads COMPOSE_PROFILES and DOMAIN from .env; mirror that here so a
+# public server cannot come up with the HTTPS entry point misconfigured.
+env_value() { sed -n "s/^$1=//p" .env | tail -n 1 | sed 's/[[:space:]]*#.*$//; s/^["'\'']//; s/["'\'']$//'; }
+https_enabled=false
+case ",$(env_value COMPOSE_PROFILES)," in *,https,*) https_enabled=true ;; esac
+if [ "$https_enabled" = true ] && [ -z "$(env_value DOMAIN)" ]; then
+  log "COMPOSE_PROFILES includes https but DOMAIN is empty in .env"
+  exit 1
+fi
+
 log "deploying $(git rev-parse --short HEAD): $(git log -1 --format=%s)"
 
 log "building images"
@@ -71,6 +81,16 @@ if [ "$frontend_ready" != true ]; then
   log "frontend did not answer within 2 minutes"
   docker compose logs --tail=50 frontend
   exit 1
+fi
+
+if [ "$https_enabled" = true ]; then
+  log "checking caddy"
+  sleep 3
+  if [ -z "$(docker compose ps --status running -q caddy)" ]; then
+    log "caddy is not running"
+    docker compose logs --tail=50 caddy
+    exit 1
+  fi
 fi
 
 log "removing dangling images"
