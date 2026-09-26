@@ -89,6 +89,66 @@ Restoring the missing artefact from backup also works, if you have it: the
 checksum in `model_versions.artifact_sha256` tells you whether the file you
 found is the right one.
 
+## Deploying
+
+`.github/workflows/deploy.yml` deploys `main` to one server over SSH once CI
+has passed on it. It can also be started by hand from the Actions tab (it
+only deploys `main`). Until `DEPLOY_HOST` is set it skips itself with a
+notice, so it does nothing on a repository with no server.
+
+On the server it checks out the exact commit CI tested and runs
+`scripts/deploy.sh`. That script builds the images, restarts the stack,
+applies migrations, and then waits for the API to report a healthy
+`database` and for the frontend to answer. The overall health status is
+not used as the gate, because it is legitimately `DEGRADED` on a healthy
+deploy (no promoted model yet, stale quotes over a weekend). The script
+works by hand too: `git checkout --detach <sha> && ./scripts/deploy.sh`.
+
+### One-time server setup
+
+1. Install Docker with the Compose plugin, and create a deploy user that can
+   run `docker` (for example, a member of the `docker` group).
+2. Clone the repository as that user, for example to `/opt/stock-intelligence`.
+   For a private repository, give the server read access with a
+   [deploy key](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys)
+   so that `git fetch` works non-interactively.
+3. `cp .env.example .env` in the clone and fill it in. Set `SECRET_KEY`, and
+   point `NEXT_PUBLIC_API_BASE` and `CORS_ORIGINS` at the public URLs.
+4. Run the Quick start steps from the README once: the first
+   `./scripts/deploy.sh` creates the schema, then `scripts/seed.py` and
+   `scripts/bootstrap.py` load reference data and the first model.
+5. Create an SSH key pair for GitHub Actions and add the public half to the
+   deploy user's `~/.ssh/authorized_keys`.
+
+### Repository settings
+
+Under **Settings > Secrets and variables > Actions**:
+
+| Name | Kind | Value |
+|---|---|---|
+| `DEPLOY_HOST` | secret | server hostname or IP |
+| `DEPLOY_USER` | secret | the deploy user |
+| `DEPLOY_SSH_KEY` | secret | the private key from step 5 |
+| `DEPLOY_KNOWN_HOSTS` | secret | output of `ssh-keyscan -p <port> <host>`, checked against the server's real fingerprint |
+| `DEPLOY_PATH` | variable | the clone's path, e.g. `/opt/stock-intelligence` |
+| `DEPLOY_PORT` | variable | SSH port, if not 22 |
+
+The job runs in a `production` environment. To require someone to approve
+each deploy, add required reviewers to that environment under
+**Settings > Environments**.
+
+### Rolling back
+
+The deploy log prints the commit that was running before. On the server:
+
+```bash
+git checkout --detach <previous-sha> && ./scripts/deploy.sh
+```
+
+Migrations are not reversed automatically. If the release being rolled back
+added one, downgrade it first with `docker compose exec api alembic downgrade -1`,
+and only after checking that the downgrade is safe for the data.
+
 ## Emergency shutdown
 
 1. **Kill switch** (immediate, reversible): System page → *Engage kill

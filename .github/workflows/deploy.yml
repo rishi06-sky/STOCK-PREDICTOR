@@ -1,0 +1,124 @@
+name: Deploy
+
+# Deploys main to the production server over SSH once CI has passed on it.
+#
+# The server holds a clone of this repository with a filled-in .env; this
+# workflow checks out the tested commit there and runs scripts/deploy.sh.
+# Setup (secrets, server preparation) is in docs/operations.md under
+# "Deploying". Until DEPLOY_HOST is set the workflow skips itself, so it does
+# nothing on a repository that has no server yet.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time, and never cancel one halfway through a migration.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to production
+    # Only a CI run for a push to main counts: a pull request whose head
+    # branch happens to be called main must never deploy. Manual runs deploy
+    # main only.
+    if: >-
+      (github.event_name == 'workflow_run'
+        && github.event.workflow_run.conclusion == 'success'
+        && github.event.workflow_run.event == 'push'
+        && github.event.workflow_run.head_repository.full_name == github.repository)
+      || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+
+    env:
+      # The exact commit CI tested, not whatever main points at by now.
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+    steps:
+      - name: Check configuration
+        id: config
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+        run: |
+          if [ -z "$DEPLOY_HOST" ]; then
+            echo "::notice::DEPLOY_HOST is not set, so there is nowhere to deploy. See docs/operations.md, section Deploying."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          missing=""
+          [ -n "$DEPLOY_USER" ] || missing="$missing DEPLOY_USER"
+          [ -n "$DEPLOY_SSH_KEY" ] || missing="$missing DEPLOY_SSH_KEY"
+          [ -n "$DEPLOY_KNOWN_HOSTS" ] || missing="$missing DEPLOY_KNOWN_HOSTS"
+          [ -n "$DEPLOY_PATH" ] || missing="$missing DEPLOY_PATH (variable)"
+          if [ -n "$missing" ]; then
+            echo "::error::DEPLOY_HOST is set but these are missing:$missing"
+            exit 1
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Set up SSH
+        if: steps.config.outputs.configured == 'true'
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # A pinned host key, never accept-new: the key is what proves the
+          # workflow is talking to the real server.
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Deploy
+        if: steps.config.outputs.configured == 'true'
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" \
+            -o StrictHostKeyChecking=yes -o BatchMode=yes -o ServerAliveInterval=30 \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            bash -s -- "$DEPLOY_PATH" "$DEPLOY_SHA" <<'REMOTE'
+          set -euo pipefail
+          cd "$1"
+          previous=$(git rev-parse HEAD)
+          echo "[deploy] previous commit $previous"
+          git fetch --prune origin
+          # Detached at the tested commit. A checkout with local edits fails
+          # here instead of silently discarding them.
+          git checkout --detach "$2"
+          ./scripts/deploy.sh
+          REMOTE
+
+      - name: Summary
+        if: always() && steps.config.outputs.configured == 'true'
+        run: |
+          {
+            echo "### Deploy ${{ job.status }}"
+            echo
+            echo "Commit: \`$DEPLOY_SHA\`"
+            echo
+            echo "The log above shows the previous commit. To roll back, run"
+            echo "\`git checkout --detach <previous> && ./scripts/deploy.sh\` on the server."
+            echo "Migrations are not reversed automatically."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
