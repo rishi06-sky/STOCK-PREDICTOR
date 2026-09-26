@@ -106,19 +106,44 @@ works by hand too: `git checkout --detach <sha> && ./scripts/deploy.sh`.
 
 ### One-time server setup
 
-1. Install Docker with the Compose plugin, and create a deploy user that can
-   run `docker` (for example, a member of the `docker` group).
-2. Clone the repository as that user, for example to `/opt/stock-intelligence`.
-   For a private repository, give the server read access with a
-   [deploy key](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys)
-   so that `git fetch` works non-interactively.
-3. `cp .env.example .env` in the clone and fill it in. Set `SECRET_KEY`, and
-   point `NEXT_PUBLIC_API_BASE` and `CORS_ORIGINS` at the public URLs.
-4. Run the Quick start steps from the README once: the first
-   `./scripts/deploy.sh` creates the schema, then `scripts/seed.py` and
-   `scripts/bootstrap.py` load reference data and the first model.
-5. Create an SSH key pair for GitHub Actions and add the public half to the
-   deploy user's `~/.ssh/authorized_keys`.
+Requirements: an Ubuntu 22.04/24.04 or Debian 12 server with about 2 vCPU and
+4 GB of RAM, and a domain whose DNS **A record** points at the server's IPv4
+address. If the DNS is on Cloudflare, set that record to "DNS only" (grey
+cloud): GitHub Actions connects to the domain over SSH, which Cloudflare's
+proxy does not carry.
+
+Then, as root on the server:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rishi06-sky/STOCK-PREDICTOR/main/scripts/server-setup.sh -o server-setup.sh
+less server-setup.sh              # read it before running it
+bash server-setup.sh stocks.example.com
+```
+
+`scripts/server-setup.sh` installs Docker, allows only SSH, HTTP and HTTPS
+through `ufw`, creates a `deploy` user, and clones the repository to
+`/opt/stock-intelligence`. It writes a production `.env` with a generated
+`SECRET_KEY` and database password, starts the stack, and loads reference
+data. It also creates the SSH key GitHub Actions deploys with (limited with
+`restrict` in `authorized_keys`), and finally prints every value for the
+table below. It is safe to re-run: an existing `.env`, user, clone or key is
+kept.
+
+On a public server the stack runs with `COMPOSE_PROFILES=https`, which adds
+Caddy on ports 80 and 443. Caddy obtains the HTTPS certificate for `DOMAIN`
+and sends `/api/*` and `/ws` to the API and everything else to the frontend.
+The API and frontend ports stay on `127.0.0.1`. That matters because Docker
+publishes ports around `ufw`, and because the API's rate limiter trusts
+`X-Forwarded-For`, which only Caddy sets reliably (it replaces whatever a
+client sends).
+
+Afterwards, register at `https://<domain>` (the first account becomes the
+administrator) and load price history and the first model, which takes a
+while:
+
+```bash
+sudo -u deploy -H bash -c 'cd /opt/stock-intelligence && docker compose exec -T api python scripts/bootstrap.py'
+```
 
 ### Repository settings
 
@@ -126,10 +151,10 @@ Under **Settings > Secrets and variables > Actions**:
 
 | Name | Kind | Value |
 |---|---|---|
-| `DEPLOY_HOST` | secret | server hostname or IP |
-| `DEPLOY_USER` | secret | the deploy user |
-| `DEPLOY_SSH_KEY` | secret | the private key from step 5 |
-| `DEPLOY_KNOWN_HOSTS` | secret | output of `ssh-keyscan -p <port> <host>`, checked against the server's real fingerprint |
+| `DEPLOY_HOST` | secret | the domain |
+| `DEPLOY_USER` | secret | `deploy` |
+| `DEPLOY_SSH_KEY` | secret | the private key the setup script prints; delete it from the server afterwards |
+| `DEPLOY_KNOWN_HOSTS` | secret | the host key line the setup script prints |
 | `DEPLOY_PATH` | variable | the clone's path, e.g. `/opt/stock-intelligence` |
 | `DEPLOY_PORT` | variable | SSH port, if not 22 |
 

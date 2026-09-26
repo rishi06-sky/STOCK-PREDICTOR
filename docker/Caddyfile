@@ -1,0 +1,18 @@
+# Public entry point: HTTPS for DOMAIN, with a certificate Caddy obtains and
+# renews on its own. The API and its WebSocket live under the same origin as
+# the frontend, so the browser never makes a cross-origin call.
+{$DOMAIN} {
+	encode zstd gzip
+
+	header Strict-Transport-Security "max-age=31536000"
+
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+	handle /ws {
+		reverse_proxy api:8000
+	}
+	handle {
+		reverse_proxy frontend:3000
+	}
+}
