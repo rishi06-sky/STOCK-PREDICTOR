@@ -186,6 +186,25 @@ and only after checking that the downgrade is safe for the data.
 
 ## Backups
 
+`scripts/deploy.sh` dumps the database before it migrates, into `backups/` on
+the server, and refuses to migrate if the dump fails or comes back truncated
+(it checks for pg_dump's completion marker, not a file size -- a small schema
+legitimately compresses to a few hundred bytes). It keeps the last `BACKUP_KEEP`
+dumps, default 10; `BACKUP_DIR` moves them elsewhere.
+
+That covers the one step a deploy cannot undo by checking out the previous
+commit. It is **not** an offsite backup and it does not include the model
+store, so take those separately.
+
+To restore the dump taken immediately before a bad migration:
+
+```bash
+ls -1t backups/                 # newest first, named <db>-<utc>-<commit>.sql.gz
+docker compose stop api worker
+gunzip -c backups/<file>.sql.gz | docker compose exec -T postgres psql -U stockintel stockintel
+git checkout --detach <previous-commit> && ./scripts/deploy.sh
+```
+
 Everything that matters is in PostgreSQL plus the model store.
 
 ```bash
