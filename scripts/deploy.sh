@@ -40,6 +40,42 @@ docker compose build --pull
 log "starting services"
 docker compose up -d --remove-orphans
 
+# A migration is the one step here that cannot be undone by checking out the
+# previous commit, so take a dump first and refuse to migrate without one.
+# Keeping it local is enough to recover from a bad migration; it is not an
+# offsite backup, and it does not cover the model store (see docs/operations.md).
+backup_dir="${BACKUP_DIR:-backups}"
+backup_keep="${BACKUP_KEEP:-10}"
+pg_user="$(env_value POSTGRES_USER)"; pg_user="${pg_user:-stockintel}"
+pg_db="$(env_value POSTGRES_DB)"; pg_db="${pg_db:-stockintel}"
+
+log "backing up $pg_db before migrating"
+mkdir -p "$backup_dir"
+backup_file="$backup_dir/$pg_db-$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD).sql.gz"
+# pipefail is set, so a pg_dump that dies mid-stream fails here rather than
+# leaving a truncated file that looks like a backup.
+if ! docker compose exec -T postgres pg_dump -U "$pg_user" "$pg_db" | gzip > "$backup_file"; then
+  rm -f "$backup_file"
+  log "pg_dump failed; refusing to migrate without a backup"
+  exit 1
+fi
+# Size is a poor integrity test -- a small schema legitimately gzips to a few
+# hundred bytes. pg_dump writes its completion marker only after a successful
+# run, so checking for it catches a truncated dump at any size, and reading it
+# back also proves the gzip is not corrupt.
+if ! gunzip -c "$backup_file" | tail -n 5 | grep -q 'PostgreSQL database dump complete'; then
+  log "backup has no pg_dump completion marker, so it is truncated; refusing to migrate"
+  rm -f "$backup_file"
+  exit 1
+fi
+log "backup written: $backup_file ($(wc -c < "$backup_file") bytes)"
+
+# Keep the most recent few; old ones are only useful until the next deploy.
+ls -1t "$backup_dir"/*.sql.gz 2>/dev/null | tail -n "+$((backup_keep + 1))" | while read -r old_backup; do
+  log "removing old backup $old_backup"
+  rm -f "$old_backup"
+done
+
 log "applying migrations"
 docker compose exec -T api alembic upgrade head
 

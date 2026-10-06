@@ -4,7 +4,33 @@
 {$DOMAIN} {
 	encode zstd gzip
 
-	header Strict-Transport-Security "max-age=31536000"
+	header {
+		# HTTPS only, for a year. Add `; preload` and submit the domain only
+		# once you are sure every subdomain can serve HTTPS -- preload is
+		# effectively irreversible.
+		Strict-Transport-Security "max-age=31536000"
+
+		# A trading dashboard framed by another site is a clickjacking target:
+		# an invisible overlay turns a stray click into an order. frame-ancestors
+		# is the modern control; X-Frame-Options covers browsers that predate it.
+		Content-Security-Policy "frame-ancestors 'none'"
+		X-Frame-Options DENY
+
+		# Stop the browser second-guessing a declared Content-Type, which is how
+		# an uploaded or echoed file becomes executable script.
+		X-Content-Type-Options nosniff
+
+		# Send the origin to other sites, never the path: a referrer that leaks
+		# /stock/RELIANCE tells a third party what this user is looking at.
+		Referrer-Policy strict-origin-when-cross-origin
+
+		# The platform asks for none of these; deny them so an injected script
+		# cannot either.
+		Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+
+		# Do not advertise the server software.
+		-Server
+	}
 
 	handle /api/* {
 		reverse_proxy api:8000

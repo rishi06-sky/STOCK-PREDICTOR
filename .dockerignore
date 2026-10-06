@@ -19,6 +19,9 @@
 .gitignore
 .github
 
+# Pre-deploy database dumps: never part of an image.
+backups/
+
 # Virtualenvs and package trees -- rebuilt inside the image.
 **/.venv
 **/venv
